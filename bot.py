@@ -36,6 +36,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL", "")          # ex: @achadinhosdaingrid
 TELEGRAM_MEU_CHAT = os.getenv("TELEGRAM_MEU_CHAT", "")    # seu chat privado (copia p/ WhatsApp)
 NOME_GRUPO = os.getenv("NOME_GRUPO", "Achadinhos")
+AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()          # ex: achadosindy-20
 
 # Quantas ofertas por execucao e palavras-chave para garimpar
 OFERTAS_POR_RODADA = int(os.getenv("OFERTAS_POR_RODADA", "3"))
@@ -146,7 +147,7 @@ def carregar_historico() -> dict:
 
 def salvar_historico(h: dict) -> None:
     limite = time.time() - 30 * 86400
-    h = {k: v for k, v in h.items() if v > limite}
+    h = {k: v for k, v in h.items() if k.startswith("_") or v > limite}
     HISTORICO.write_text(json.dumps(h, indent=1))
 
 
@@ -205,7 +206,8 @@ def montar_mensagem(o: dict) -> str:
     if o["vendas"] >= 1000:
         linhas.append(f"⭐ {o['nota']:.1f}".replace(".", ",") + " • +"
                       f"{o['vendas']//1000} mil vendidos")
-    linhas += ["", f"🛍️ Comprar na {o['loja']}:", o["link"], "",
+    artigo = "no" if o["loja"].lower().startswith("mercado") else "na"
+    linhas += ["", f"🛍️ Comprar {artigo} {o['loja']}:", o["link"], "",
                "⚠️ Preço e estoque podem mudar a qualquer momento."]
     return "\n".join(linhas)
 
@@ -237,9 +239,164 @@ def marcar_manual_postada(link: str) -> None:
         w.writerows(linhas)
 
 
+# ------------------- Modo rapido: ofertas mandadas pro bot -------------------
+import re
+from urllib.parse import urlparse
+
+HORARIOS = [9, 12, 15, 19, 21]
+AJUDA = (
+    "🤖 Me mande uma oferta assim:\n\n"
+    "https://link-do-produto\n"
+    "Nome curto do produto\n"
+    "49,90 / 89,90\n"
+    "cupom: ACHADO10   (opcional)\n\n"
+    "• Amazon: pode mandar o link normal do produto, eu coloco a tag de afiliado.\n"
+    "• Mercado Livre: mande o link de afiliado (botão Compartilhar no app).\n"
+    "• O primeiro preço é o atual; o segundo, o antigo (opcional).\n"
+    "A oferta sai na próxima rodada."
+)
+_NUM = r"(?:R\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|(?:R\$\s*)?\d+(?:[.,]\d{1,2})?"
+_LINHA_PRECO = re.compile(
+    rf"^\s*(?:de\s+|por\s+)?({_NUM})\s*(?:(?:/|\||-|a|por|de)\s*({_NUM}))?\s*$", re.I)
+
+
+def _valor(txt: str) -> float:
+    t = txt.replace("R$", "").strip()
+    if "," in t:                       # 1.299,90 -> 1299.90
+        t = t.replace(".", "").replace(",", ".")
+    return float(t)
+
+
+def _loja(url: str) -> str:
+    h = urlparse(url).netloc.lower()
+    if "amazon" in h or "amzn" in h:
+        return "Amazon"
+    if "mercadoli" in h or "mercadolibre" in h or "meli" in h:
+        return "Mercado Livre"
+    if "shopee" in h or "shp.ee" in h:
+        return "Shopee"
+    return "Oferta"
+
+
+def link_amazon(url: str) -> str:
+    """Link de produto da Amazon -> link limpo com a tag de afiliado."""
+    m = re.search(r"/(?:dp|gp/product|gp/aw/d)/([A-Z0-9]{10})", url)
+    if m and AMAZON_TAG:
+        return f"https://www.amazon.com.br/dp/{m.group(1)}?tag={AMAZON_TAG}"
+    return url  # link curto (amzn.to) ou já com tag: usa como veio
+
+
+def _nome_da_url(url: str) -> str:
+    p = urlparse(url).path
+    m = re.search(r"/([^/]+)/dp/", p) or re.search(r"MLB-?\d+-([^/_]+)", p)
+    return m.group(1).replace("-", " ").strip()[:80].capitalize() if m else ""
+
+
+def interpretar(texto: str) -> tuple[dict | None, str]:
+    """Transforma a mensagem numa oferta. Devolve (oferta, problema)."""
+    urls = re.findall(r"https?://\S+", texto)
+    if not urls:
+        return None, "não achei nenhum link"
+    url = urls[0].rstrip(").,")
+    resto = texto.replace(urls[0], "\n")
+    nome, cupom, precos = "", "", []
+    for linha in [l.strip() for l in resto.splitlines() if l.strip()]:
+        if linha.lower().startswith("cupom"):
+            cupom = linha.split(":", 1)[-1].replace("cupom", "").strip()
+            continue
+        m = _LINHA_PRECO.match(linha)
+        if m and not precos:
+            precos = [_valor(g) for g in m.groups() if g]
+            continue
+        if not nome:
+            nome = linha.replace(",", " ")[:90]
+    if not precos:
+        return None, "faltou o preço (ex: 49,90 / 89,90)"
+    loja = _loja(url)
+    nome = nome or _nome_da_url(url) or "Achadinho do dia"
+    if loja == "Amazon":
+        url = link_amazon(url)
+    preco, antes = min(precos), (max(precos) if len(precos) > 1 else 0)
+    return {"loja": loja, "produto": nome, "preco": f"{preco:.2f}",
+            "preco_antes": f"{antes:.2f}" if antes > preco else "",
+            "cupom": cupom, "link": url, "imagem": "", "postado": ""}, ""
+
+
+def _proximo_horario() -> str:
+    agora = datetime.now(BR)
+    for h in HORARIOS:
+        if agora.hour < h:
+            return f"hoje às {h}h"
+    return f"amanhã às {HORARIOS[0]}h"
+
+
+def _responder(chat, texto):
+    try:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                      data={"chat_id": chat, "text": texto}, timeout=20)
+    except Exception:
+        pass
+
+
+def ler_caixa_do_bot(historico: dict) -> int:
+    """Lê o que vocês mandaram pro bot e coloca na fila (ofertas.csv)."""
+    autorizados = {c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()}
+    if not TELEGRAM_TOKEN or not autorizados:
+        return 0
+    offset = int(historico.get("_tg_offset", 0))
+    r = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates",
+                     params={"offset": offset, "timeout": 0,
+                             "allowed_updates": json.dumps(["message"])}, timeout=30)
+    r.raise_for_status()
+    novas = 0
+    linhas_existentes = set()
+    if OFERTAS_MANUAIS.exists():
+        linhas_existentes = {l.get("link", "").strip() for l in csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8"))}
+    for up in r.json().get("result", []):
+        historico["_tg_offset"] = up["update_id"] + 1
+        msg = up.get("message") or {}
+        chat = str((msg.get("chat") or {}).get("id", ""))
+        texto = (msg.get("text") or msg.get("caption") or "").strip()
+        if chat not in autorizados or not texto:
+            continue
+        if texto.lower() in ("/start", "ajuda", "/ajuda", "help"):
+            _responder(chat, AJUDA)
+            continue
+        oferta, problema = interpretar(texto)
+        if not oferta:
+            _responder(chat, f"⚠️ Não entendi essa oferta: {problema}.\n\n{AJUDA}")
+            continue
+        if oferta["link"] in linhas_existentes:
+            _responder(chat, "ℹ️ Essa oferta já estava na fila.")
+            continue
+        novo = not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0
+        with open(OFERTAS_MANUAIS, "a", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(oferta.keys()))
+            if novo:
+                w.writeheader()
+            w.writerow(oferta)
+        linhas_existentes.add(oferta["link"])
+        novas += 1
+        aviso = ""
+        if oferta["loja"] == "Amazon" and not AMAZON_TAG and "tag=" not in oferta["link"]:
+            aviso = "\n⚠️ Falta configurar a tag da Amazon (AMAZON_TAG): esse link pode não render comissão."
+        _responder(chat, f"✅ Na fila: {oferta['produto']} por {brl(float(oferta['preco']))} "
+                         f"({oferta['loja']}). Sai na próxima rodada ({_proximo_horario()}).{aviso}")
+    return novas
+
+
 # ------------------------------- Principal -----------------------------------
 def main() -> None:
     teste = "--teste" in sys.argv
+    historico = carregar_historico()
+    if not teste:
+        try:
+            n = ler_caixa_do_bot(historico)
+            if n:
+                print(f"{n} oferta(s) nova(s) recebida(s) pelo Telegram.")
+        except Exception as e:
+            print(f"[aviso] não consegui ler as mensagens do bot: {e}")
+        salvar_historico(historico)
     ofertas = ler_manuais()
 
     if SHOPEE_APP_ID and SHOPEE_SECRET:
@@ -252,7 +409,6 @@ def main() -> None:
         print("Sem credenciais da Shopee e sem ofertas no ofertas.csv. Nada a postar.")
         return
 
-    historico = carregar_historico()
     escolhidas = escolher(ofertas, historico)
     if not escolhidas:
         print("Nenhuma oferta passou nos filtros desta vez.")
@@ -265,8 +421,11 @@ def main() -> None:
             continue
         if TELEGRAM_CANAL:
             telegram(TELEGRAM_CANAL, msg, o["imagem"])
-        if TELEGRAM_MEU_CHAT:
-            telegram(TELEGRAM_MEU_CHAT, "📋 Copie e cole no WhatsApp:\n\n" + msg, None)
+        for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+            try:
+                telegram(chat, "📋 Copie e cole no WhatsApp:\n\n" + msg, None)
+            except Exception as e:
+                print(f"[aviso] não consegui mandar a cópia para {chat}: {e}")
         historico[o["id"]] = time.time()
         if o.get("manual"):
             marcar_manual_postada(o["link"])
