@@ -1,0 +1,41 @@
+# Roda o agente sozinho, de graça, nos servidores do GitHub.
+# Horários em UTC (Brasília = UTC-3): 09h, 12h, 15h, 19h e 21h no horário de Brasília.
+name: Postar achadinhos
+
+on:
+  schedule:
+    - cron: "7 12 * * *"
+    - cron: "7 15 * * *"
+    - cron: "7 18 * * *"
+    - cron: "7 22 * * *"
+    - cron: "7 0 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  postar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Postar ofertas
+        env:
+          SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
+          SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL }}
+          TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT }}
+          OFERTAS_POR_RODADA: "2"
+        run: python bot.py
+      - name: Guardar histórico (evita repetir oferta)
+        run: |
+          git config user.name "achadinhos-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add historico.json ofertas.csv || true
+          git diff --cached --quiet || git commit -m "histórico de postagens"
+          git push || true
