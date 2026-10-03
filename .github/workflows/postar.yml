@@ -30,6 +30,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL }}
           TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT }}
+          AMAZON_TAG: ${{ secrets.AMAZON_TAG }}
           OFERTAS_POR_RODADA: "2"
         run: python bot.py
       - name: Guardar histórico (evita repetir oferta)
