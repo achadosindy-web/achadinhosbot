@@ -30,11 +30,11 @@ HISTORICO = PASTA / "historico.json"
 OFERTAS_MANUAIS = PASTA / "ofertas.csv"
 
 # ---------- Configuracao (vem das variaveis de ambiente / segredos) ----------
-SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "")
-SHOPEE_SECRET = os.getenv("SHOPEE_SECRET", "")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL", "")          # ex: @achadinhosdaingrid
-TELEGRAM_MEU_CHAT = os.getenv("TELEGRAM_MEU_CHAT", "")    # seu chat privado (copia p/ WhatsApp)
+SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "").strip()
+SHOPEE_SECRET = os.getenv("SHOPEE_SECRET", "").strip()
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
+TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL", "").strip()          # ex: @achadinhosdaingrid
+TELEGRAM_MEU_CHAT = os.getenv("TELEGRAM_MEU_CHAT", "").strip()    # seu chat privado (copia p/ WhatsApp)
 NOME_GRUPO = os.getenv("NOME_GRUPO", "Achadinhos")
 AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()          # ex: achadosindy-20
 
