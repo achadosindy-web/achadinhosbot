@@ -338,16 +338,22 @@ def whatsapp(texto: str, imagem: str | None) -> None:
     if _usa_green():
         foto = _imagem_bytes(imagem)
         if foto:
-            _green("sendFileByUpload", data={"chatId": _grupo_green(), "caption": texto},
-                   files={"file": ("achadinho.jpg", foto, "image/jpeg")})
+            resp = _green("sendFileByUpload", data={"chatId": _grupo_green(), "caption": texto},
+                          files={"file": ("achadinho.jpg", foto, "image/jpeg")})
         else:
-            _green("sendMessage", json={"chatId": _grupo_green(), "message": texto})
+            resp = _green("sendMessage", json={"chatId": _grupo_green(), "message": texto})
+        print(f"[whatsapp] Green-API -> {_grupo_green()}: {resp}")
+        if not (isinstance(resp, dict) and resp.get("idMessage")):
+            raise RuntimeError(f"Green-API não confirmou o envio: {resp}")
         return
     img = _imagem_para_whatsapp(imagem)
     if img:
-        _zapi("send-image", {"phone": WHATSAPP_GRUPO, "image": img, "caption": texto})
+        resp = _zapi("send-image", {"phone": WHATSAPP_GRUPO, "image": img, "caption": texto})
     else:
-        _zapi("send-text", {"phone": WHATSAPP_GRUPO, "message": texto})
+        resp = _zapi("send-text", {"phone": WHATSAPP_GRUPO, "message": texto})
+    print(f"[whatsapp] Z-API -> {WHATSAPP_GRUPO}: {resp}")
+    if isinstance(resp, dict) and resp.get("error"):
+        raise RuntimeError(f"Z-API recusou: {resp}")
 
 
 def imagem_do_link(link: str) -> str | None:
