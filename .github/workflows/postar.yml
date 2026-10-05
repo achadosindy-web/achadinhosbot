@@ -1,15 +1,15 @@
-# Roda o agente sozinho, de graça, nos servidores do GitHub.
-# Horários em UTC (Brasília = UTC-3): 09h, 12h, 15h, 19h e 21h no horário de Brasília.
+# Roda o agente nos servidores do GitHub.
+# Quem chama no horário certo é o cron-job.org (9h, 12h, 15h, 19h e 21h de Brasília).
+# Também dá pra rodar na mão: Actions > Postar achadinhos > Run workflow.
 name: Postar achadinhos
 
 on:
-  schedule:
-    - cron: "7 12 * * *"
-    - cron: "7 15 * * *"
-    - cron: "7 18 * * *"
-    - cron: "7 22 * * *"
-    - cron: "7 0 * * *"
   workflow_dispatch: {}
+
+# Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
+concurrency:
+  group: postar
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -17,6 +17,8 @@ permissions:
 jobs:
   postar:
     runs-on: ubuntu-latest
+    env:
+      TEM_PAGINA: ${{ secrets.PAGINA_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,12 +33,38 @@ jobs:
           TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL }}
           TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT }}
           AMAZON_TAG: ${{ secrets.AMAZON_TAG }}
+          ZAPI_INSTANCIA: ${{ secrets.ZAPI_INSTANCIA }}
+          ZAPI_TOKEN: ${{ secrets.ZAPI_TOKEN }}
+          ZAPI_CLIENT_TOKEN: ${{ secrets.ZAPI_CLIENT_TOKEN }}
+          WHATSAPP_GRUPO: ${{ secrets.WHATSAPP_GRUPO }}
           OFERTAS_POR_RODADA: "2"
+          RADAR_MODO: "aprovar"     # aprovar | auto | desligado
         run: python bot.py
       - name: Guardar histórico (evita repetir oferta)
         run: |
           git config user.name "achadinhos-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add historico.json ofertas.csv || true
+          for f in historico.json ofertas.csv vitrine.json; do if [ -f "$f" ]; then git add "$f"; fi; done
           git diff --cached --quiet || git commit -m "histórico de postagens"
           git push || true
+      # Atualiza "Olha o que rolou no grupo" na página (repositório público "grupo").
+      # Só roda se o segredo PAGINA_TOKEN existir; se falhar, não atrapalha as postagens.
+      - name: Atualizar vitrine da página
+        if: env.TEM_PAGINA == 'true'
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: achadosindy-web/grupo
+          token: ${{ secrets.PAGINA_TOKEN }}
+          path: pagina
+      - name: Publicar vitrine
+        if: env.TEM_PAGINA == 'true'
+        continue-on-error: true
+        run: |
+          [ -f vitrine.json ] || exit 0
+          cp vitrine.json pagina/vitrine.json
+          cd pagina
+          git config user.name "achadinhos-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add vitrine.json
+          git diff --cached --quiet || (git commit -m "vitrine: últimos achados" && git push)
