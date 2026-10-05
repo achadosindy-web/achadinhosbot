@@ -25,6 +25,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import requests
+from html import unescape as html_unescape
 
 import radar
 
@@ -46,6 +47,10 @@ ZAPI_INSTANCIA = os.getenv("ZAPI_INSTANCIA", "").strip()
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "").strip()
 WHATSAPP_GRUPO = os.getenv("WHATSAPP_GRUPO", "").strip()           # ex: 120363...-group
+# Alternativa grátis: Green-API (plano Developer, até 3 conversas: basta pro grupo)
+GREEN_ID = os.getenv("GREEN_ID", "").strip()
+GREEN_TOKEN = os.getenv("GREEN_TOKEN", "").strip()
+GREEN_URL = (os.getenv("GREEN_URL", "").strip() or "https://api.green-api.com").rstrip("/")
 # Radar de canais do Telegram: "aprovar" (te manda pra aprovar), "auto" (posta direto) ou "desligado"
 RADAR_MODO = os.getenv("RADAR_MODO", "aprovar").strip().lower()
 RADAR_SUGESTOES = int(os.getenv("RADAR_SUGESTOES", "5"))     # sugestões por rodada no modo aprovar
@@ -288,16 +293,74 @@ def _imagem_para_whatsapp(imagem: str | None) -> str | None:
         return None
 
 
+def _usa_green() -> bool:
+    return bool(GREEN_ID and GREEN_TOKEN)
+
+
 def whatsapp_ligado() -> bool:
-    return all([ZAPI_INSTANCIA, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN, WHATSAPP_GRUPO])
+    if not WHATSAPP_GRUPO:
+        return False
+    return _usa_green() or all([ZAPI_INSTANCIA, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN])
+
+
+def _green(metodo_api: str, **kw):
+    url = f"{GREEN_URL}/waInstance{GREEN_ID}/{metodo_api}/{GREEN_TOKEN}"
+    metodo = kw.pop("metodo", "post")
+    r = requests.request(metodo, url, timeout=60, **kw)
+    r.raise_for_status()
+    return r.json() if r.content else {}
+
+
+def _grupo_green() -> str:
+    g = WHATSAPP_GRUPO
+    return g.replace("-group", "@g.us") if g.endswith("-group") else g
+
+
+def _imagem_bytes(imagem: str | None) -> bytes | None:
+    if not imagem:
+        return None
+    try:
+        if imagem.startswith("http"):
+            r = requests.get(imagem, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+        else:
+            base = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+            info = requests.get(f"{base}/getFile", params={"file_id": imagem}, timeout=30).json()
+            r = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/"
+                             f"{info['result']['file_path']}", timeout=60)
+        r.raise_for_status()
+        return r.content
+    except Exception as e:
+        print(f"[aviso] não consegui baixar a imagem: {e}")
+        return None
 
 
 def whatsapp(texto: str, imagem: str | None) -> None:
+    if _usa_green():
+        foto = _imagem_bytes(imagem)
+        if foto:
+            _green("sendFileByUpload", data={"chatId": _grupo_green(), "caption": texto},
+                   files={"file": ("achadinho.jpg", foto, "image/jpeg")})
+        else:
+            _green("sendMessage", json={"chatId": _grupo_green(), "message": texto})
+        return
     img = _imagem_para_whatsapp(imagem)
     if img:
         _zapi("send-image", {"phone": WHATSAPP_GRUPO, "image": img, "caption": texto})
     else:
         _zapi("send-text", {"phone": WHATSAPP_GRUPO, "message": texto})
+
+
+def imagem_do_link(link: str) -> str | None:
+    """Pega a foto do produto da prévia do link (og:image), como o Telegram faz."""
+    try:
+        r = requests.get(link, timeout=20, allow_redirects=True,
+                         headers={"User-Agent": "TelegramBot (like TwitterBot)"})
+        m = (re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)', r.text) or
+             re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image', r.text))
+        return html_unescape(m.group(1)) if m else None
+    except Exception as e:
+        print(f"[aviso] não consegui pegar a foto do link: {e}")
+        return None
 
 
 def _como_lista(resp) -> list:
@@ -312,6 +375,15 @@ def _como_lista(resp) -> list:
 
 
 def listar_grupos_whatsapp() -> str:
+    if _usa_green():
+        contatos = _green("getContacts", metodo="get") or []
+        grupos = [c for c in contatos if isinstance(c, dict) and
+                  (c.get("type") == "group" or str(c.get("id", "")).endswith("@g.us"))]
+        if not grupos:
+            return f"Não achei grupos nesse número (Green-API). Resposta: {str(contatos)[:300]}"
+        return ("Grupos do WhatsApp conectado (Green-API):\n\n" +
+                "\n".join(f"• {g.get('name') or '(sem nome)'}\n  {g.get('id')}" for g in grupos) +
+                "\n\nCopie o código do grupo (termina em @g.us) para o segredo WHATSAPP_GRUPO.")
     tentativas = []
     grupos = []
     for caminho in ("groups?page=1&pageSize=50", "chats?page=1&pageSize=200"):
@@ -661,6 +733,8 @@ def main() -> None:
         return
 
     for o in escolhidas:
+        if not o.get("imagem") and not teste:
+            o["imagem"] = imagem_do_link(o["link"])
         msg = montar_mensagem(o)
         print("=" * 50 + "\n" + msg + "\n")
         if teste:
