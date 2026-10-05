@@ -15,6 +15,7 @@ Rodar:  python bot.py            (posta de verdade)
 
 import csv
 import hashlib
+import re
 import json
 import os
 import random
@@ -28,6 +29,7 @@ import requests
 PASTA = Path(__file__).parent
 HISTORICO = PASTA / "historico.json"
 OFERTAS_MANUAIS = PASTA / "ofertas.csv"
+VITRINE = PASTA / "vitrine.json"   # últimos achados, mostrados na página do grupo
 
 # ---------- Configuracao (vem das variaveis de ambiente / segredos) ----------
 SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "").strip()
@@ -220,8 +222,12 @@ def telegram(chat: str, texto: str, imagem: str | None) -> None:
                           data={"chat_id": chat, "photo": imagem, "caption": texto})
         if r.ok:
             return
-    r = requests.post(f"{base}/sendMessage", timeout=30,
-                      data={"chat_id": chat, "text": texto})
+    dados = {"chat_id": chat, "text": texto}
+    # Link de vitrine do Mercado Livre (meli.la / /social/) gera prévia de outro
+    # produto; nesses casos desliga a prévia automática.
+    if re.search(r"meli\.la/|mercadolivre\.com\.br/social/", texto):
+        dados["link_preview_options"] = json.dumps({"is_disabled": True})
+    r = requests.post(f"{base}/sendMessage", timeout=30, data=dados)
     r.raise_for_status()
 
 
@@ -245,7 +251,7 @@ from urllib.parse import urlparse
 
 HORARIOS = [9, 12, 15, 19, 21]
 AJUDA = (
-    "🤖 Me mande uma oferta assim:\n\n"
+    "🤖 Me mande uma oferta assim (pode ser como legenda de uma foto do produto):\n\n"
     "https://link-do-produto\n"
     "Nome curto do produto\n"
     "49,90 / 89,90\n"
@@ -363,6 +369,8 @@ def ler_caixa_do_bot(historico: dict) -> int:
             _responder(chat, AJUDA)
             continue
         oferta, problema = interpretar(texto)
+        if oferta and msg.get("photo"):
+            oferta["imagem"] = msg["photo"][-1]["file_id"]   # foto mandada pelo usuário
         if not oferta:
             _responder(chat, f"⚠️ Não entendi essa oferta: {problema}.\n\n{AJUDA}")
             continue
@@ -383,6 +391,26 @@ def ler_caixa_do_bot(historico: dict) -> int:
         _responder(chat, f"✅ Na fila: {oferta['produto']} por {brl(float(oferta['preco']))} "
                          f"({oferta['loja']}). Sai na próxima rodada ({_proximo_horario()}).{aviso}")
     return novas
+
+
+# ----------------------------- Vitrine da página ------------------------------
+def registrar_vitrine(o: dict) -> None:
+    """Guarda o achado (sem link) para a seção 'Olha o que rolou no grupo'."""
+    try:
+        itens = json.loads(VITRINE.read_text(encoding="utf-8")) if VITRINE.exists() else []
+    except ValueError:
+        itens = []
+    antes = o.get("preco_antes") or (
+        o["preco"] / (1 - o["desconto"] / 100) if 0 < o["desconto"] < 100 else 0)
+    nome = o["nome"] if len(o["nome"]) <= 60 else o["nome"][:57].rstrip() + "..."
+    itens.insert(0, {
+        "nome": nome,
+        "loja": o["loja"],
+        "preco": round(o["preco"], 2),
+        "preco_antes": round(antes, 2) if antes > o["preco"] else 0,
+        "quando": datetime.now(BR).isoformat(timespec="minutes"),
+    })
+    VITRINE.write_text(json.dumps(itens[:12], ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 # ------------------------------- Principal -----------------------------------
@@ -427,6 +455,7 @@ def main() -> None:
             except Exception as e:
                 print(f"[aviso] não consegui mandar a cópia para {chat}: {e}")
         historico[o["id"]] = time.time()
+        registrar_vitrine(o)
         if o.get("manual"):
             marcar_manual_postada(o["link"])
         time.sleep(3)
