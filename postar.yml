@@ -42,6 +42,7 @@ jobs:
           GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
           RADAR_MODO: "aprovar"     # aprovar | auto | desligado
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava"
         run: python bot.py
       - name: Guardar histórico (evita repetir oferta)
         run: |
