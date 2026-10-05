@@ -37,6 +37,9 @@ jobs:
           ZAPI_TOKEN: ${{ secrets.ZAPI_TOKEN }}
           ZAPI_CLIENT_TOKEN: ${{ secrets.ZAPI_CLIENT_TOKEN }}
           WHATSAPP_GRUPO: ${{ secrets.WHATSAPP_GRUPO }}
+          GREEN_ID: ${{ secrets.GREEN_ID }}
+          GREEN_TOKEN: ${{ secrets.GREEN_TOKEN }}
+          GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
           RADAR_MODO: "aprovar"     # aprovar | auto | desligado
         run: python bot.py
