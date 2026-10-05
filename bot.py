@@ -33,6 +33,7 @@ PASTA = Path(__file__).parent
 HISTORICO = PASTA / "historico.json"
 OFERTAS_MANUAIS = PASTA / "ofertas.csv"
 VITRINE = PASTA / "vitrine.json"   # últimos achados, mostrados na página do grupo
+GARIMPO = PASTA / "garimpo.json"   # tudo que o radar achou, mostrado no painel de vocês
 
 # ---------- Configuracao (vem das variaveis de ambiente / segredos) ----------
 SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "").strip()
@@ -356,8 +357,29 @@ def whatsapp(texto: str, imagem: str | None) -> None:
         raise RuntimeError(f"Z-API recusou: {resp}")
 
 
+def _foto_amazon(link: str) -> str | None:
+    """A Amazon bloqueia robôs na página, mas serve a foto pelo código do produto (ASIN)."""
+    m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", link)
+    if not m:
+        return None
+    for modelo in ("https://images-na.ssl-images-amazon.com/images/P/{a}.01._SCLZZZZZZZ_.jpg",
+                   "https://m.media-amazon.com/images/P/{a}.01._SCLZZZZZZZ_.jpg"):
+        url = modelo.format(a=m.group(1))
+        try:
+            r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+            if r.ok and r.headers.get("content-type", "").startswith("image") and len(r.content) > 2000:
+                return url
+        except Exception:
+            continue
+    return None
+
+
 def imagem_do_link(link: str) -> str | None:
     """Pega a foto do produto da prévia do link (og:image), como o Telegram faz."""
+    if "amazon." in link:
+        foto = _foto_amazon(link)
+        if foto:
+            return foto
     try:
         r = requests.get(link, timeout=20, allow_redirects=True,
                          headers={"User-Agent": "TelegramBot (like TwitterBot)"})
@@ -616,6 +638,110 @@ def sugerir_radar(historico: dict) -> int:
     return len(achadas)
 
 
+# ----------------------------- Painel do garimpo -------------------------------
+def _gid(texto: str) -> str:
+    return hashlib.md5(texto.encode()).hexdigest()[:6]
+
+
+def _ler_garimpo() -> dict:
+    try:
+        return json.loads(GARIMPO.read_text(encoding="utf-8"))
+    except Exception:
+        return {"itens": []}
+
+
+def _usuario_do_bot(historico: dict) -> str:
+    if historico.get("_bot_user"):
+        return historico["_bot_user"]
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getMe", timeout=20).json()
+        historico["_bot_user"] = r["result"]["username"]
+    except Exception as e:
+        print(f"[aviso] não consegui ler o nome do bot: {e}")
+    return historico.get("_bot_user", "")
+
+
+def atualizar_painel(historico: dict) -> int:
+    """Junta o que o radar achou em garimpo.json (as últimas 48h, até 250 itens)."""
+    dados = _ler_garimpo()
+    itens = {i["gid"]: i for i in dados.get("itens", []) if i.get("gid")}
+    conhecidos = {i.get("id") for i in itens.values()}
+    novos = radar.buscar(conhecidos, nicho="tudo")
+    agora = datetime.now(BR)
+    for o in novos:
+        gid = _gid(o["id"])
+        if gid in itens:
+            continue
+        itens[gid] = {
+            "gid": gid, "id": o["id"], "loja": o["loja"], "nome": o["nome"],
+            "preco": o["preco"], "preco_antes": o.get("preco_antes") or 0,
+            "desconto": o.get("desconto") or 0, "cupom": o.get("cupom", ""),
+            "imagem": o.get("imagem") or "", "link": o["link"],
+            "converter": bool(o.get("converter")), "categoria": o.get("categoria", "Outros"),
+            "fonte": o.get("fonte", ""), "post": o.get("post", ""),
+            "quando": o.get("quando") or agora.isoformat(timespec="minutes"),
+            "achado_em": agora.isoformat(timespec="minutes"),
+        }
+    limite = agora - timedelta(hours=48)
+    def recente(i):
+        try:
+            return datetime.fromisoformat(i.get("achado_em") or i.get("quando")) >= limite
+        except Exception:
+            return True
+    aprovados = set(historico.get("_aprovados", []))
+    lista = [dict(i, aprovado=i["gid"] in aprovados) for i in itens.values() if recente(i)]
+    lista.sort(key=lambda i: i.get("achado_em", ""), reverse=True)
+    GARIMPO.write_text(json.dumps({
+        "atualizado": agora.isoformat(timespec="minutes"),
+        "bot": _usuario_do_bot(historico),
+        "itens": lista[:250],
+    }, ensure_ascii=False, indent=1), encoding="utf-8")
+    return len(novos)
+
+
+_PREFIXOS = {"ml": "https://meli.la/", "sp": "https://s.shopee.com.br/", "az": "https://amzn.to/"}
+
+
+def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set) -> int:
+    m = re.match(r"^(ok|ml|sp|az)_([a-f0-9]{6})(?:_([A-Za-z0-9]+))?$", comando)
+    if not m:
+        return -1
+    tipo, gid, codigo = m.groups()
+    item = next((i for i in _ler_garimpo().get("itens", []) if i.get("gid") == gid), None)
+    if not item:
+        _responder(chat, "⚠️ Não achei esse achado no painel (ele pode ter saído, o painel guarda só 48h).")
+        return 0
+    if tipo == "ok":
+        if not item.get("converter"):
+            _responder(chat, "⚠️ Esse achado precisa do SEU link: cole o seu link no painel antes de postar.")
+            return 0
+        link = item["link"]
+    else:
+        if not codigo:
+            _responder(chat, "⚠️ Faltou o seu link. Cole o link no painel e toque em Postar de novo.")
+            return 0
+        link = _PREFIXOS[tipo] + codigo
+        if tipo == "az":
+            try:
+                asin = radar.resolver_amazon(link)
+                link = radar.link_nosso(asin) if asin else link_amazon(link)
+            except Exception:
+                pass
+    oferta = {"loja": item["loja"], "produto": item["nome"], "preco": f"{float(item['preco']):.2f}",
+              "preco_antes": f"{float(item['preco_antes']):.2f}" if item.get("preco_antes") else "",
+              "cupom": item.get("cupom", ""), "link": link, "imagem": item.get("imagem", ""), "postado": ""}
+    if not _por_na_fila(oferta, existentes):
+        _responder(chat, "ℹ️ Esse achado já estava na fila.")
+        return 0
+    aprovados = historico.get("_aprovados", [])
+    if gid not in aprovados:
+        aprovados.append(gid)
+    historico["_aprovados"] = aprovados[-500:]
+    _responder(chat, f"✅ Na fila pelo painel: {item['nome']} por {brl(float(item['preco']))} "
+                     f"({item['loja']}). Sai nesta rodada ou na próxima.")
+    return 1
+
+
 def ler_caixa_do_bot(historico: dict) -> int:
     """Lê o que vocês mandaram pro bot e coloca na fila (ofertas.csv)."""
     autorizados = {c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()}
@@ -637,6 +763,12 @@ def ler_caixa_do_bot(historico: dict) -> int:
         texto = (msg.get("text") or msg.get("caption") or "").strip()
         if chat not in autorizados or not texto:
             continue
+        comando = re.sub(r"^/start\s+", "", texto.strip())
+        if comando != texto.strip() or re.match(r"^(ok|ml|sp|az)_[a-f0-9]{6}", comando):
+            r_painel = _aprovar_do_painel(chat, comando, historico, linhas_existentes)
+            if r_painel >= 0:
+                novas += r_painel
+                continue
         if texto.lower() in ("/start", "ajuda", "/ajuda", "help"):
             _responder(chat, AJUDA)
             continue
@@ -715,6 +847,13 @@ def main() -> None:
             ofertas += achadas
         except Exception as e:
             print(f"[aviso] radar falhou: {e}")
+    elif RADAR_MODO == "painel" and not teste:
+        try:
+            n = atualizar_painel(historico)
+            print(f"[painel] {n} achado(s) novo(s) no painel do garimpo.")
+            salvar_historico(historico)
+        except Exception as e:
+            print(f"[aviso] painel falhou: {e}")
     elif RADAR_MODO == "aprovar" and not teste:
         try:
             n = sugerir_radar(historico)
