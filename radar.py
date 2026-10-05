@@ -26,6 +26,23 @@ _SEMPRE = r"(legging|leggin|conjunto fitness|top fitness|short fitness|calça fi
 _FORA = r"(whey|creatina|suplement|halter|anilha|esteira|bicicleta|smartwatch|rel[oó]gio|fone|garrafa|squeeze|coqueteleira|t[eê]nis|celular|notebook|tv\b|monitor|game|playstation|xbox|tapete|colchonete|el[aá]stico|caneleira|luva)"
 
 
+_CATEGORIAS = [
+    ("Fitness", r"fitness|academia|treino|legging|esportiv|dry ?fit|compress[aã]o|yoga|pilates|corrida|whey|creatina|halter|top esportivo"),
+    ("Beleza", r"perfume|maquiag|batom|base l[ií]quida|s[eé]rum|hidratante|shampoo|condicionador|creme|skin ?care|protetor solar|esmalte|secador|chapinha|escova alisadora|cabelo"),
+    ("Casa", r"cozinha|panela|frigideira|airfryer|air fryer|fritadeira|liquidificador|organizador|pote|toalha|len[cç]ol|travesseiro|edredom|cortina|tapete|aspirador|mop|vassoura|lumin[aá]ria|decora|copo|caneca|garrafa t[eé]rmica|cafeteira|chaleira|forno|micro-?ondas|geladeira|fog[aã]o|ventilador|limpeza|lava"),
+    ("Moda", r"camiseta|camisa|vestido|cal[cç]a|bermuda|short|saia|blusa|jaqueta|moletom|t[eê]nis|sand[aá]lia|chinelo|bolsa|mochila|carteira|rel[oó]gio|[oó]culos|cueca|calcinha|suti[aã]|meia|bon[eé]"),
+    ("Eletrônicos", r"fone|celular|smartphone|iphone|galaxy|xiaomi|notebook|tablet|\btv\b|smart ?tv|monitor|carregador|power ?bank|caixa de som|alexa|echo|kindle|ssd|mouse|teclado|headset|smartwatch|playstation|xbox|nintendo|game"),
+]
+
+
+def categoria(texto: str) -> str:
+    t = texto.lower()
+    for nome, padrao in _CATEGORIAS:
+        if re.search(padrao, t):
+            return nome
+    return "Outros"
+
+
 def e_roupa_fitness(texto: str) -> bool:
     t = texto.lower()
     if re.search(_FORA, t):
@@ -193,7 +210,7 @@ def cupom(texto: str) -> str:
 
 
 # ----------------------------- Radar ------------------------------------------
-def buscar(ja_vistos: set[str]) -> list[dict]:
+def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     """Roupa fitness achada nos canais.
     Amazon: já volta com o link de vocês (converter=True).
     Mercado Livre/Shopee: volta como garimpo (converter=False), pra vocês gerarem o link no app."""
@@ -202,6 +219,7 @@ def buscar(ja_vistos: set[str]) -> list[dict]:
     total = recentes = fitness = 0
     por_loja: dict[str, int] = {}
     saltos_restantes = 40                       # limite de links desconhecidos seguidos por rodada
+    amazon_restantes = 80                       # limite de links da Amazon resolvidos por rodada
     for canal in CANAIS:
         try:
             posts = ler_canal(canal)
@@ -219,7 +237,8 @@ def buscar(ja_vistos: set[str]) -> list[dict]:
             except ValueError:
                 pass
             recentes += 1
-            if not e_roupa_fitness(p["texto"]):
+            nicho = nicho or os.getenv("RADAR_NICHO", "fitness")
+            if nicho == "fitness" and not e_roupa_fitness(p["texto"]):
                 continue
             fitness += 1
             alvo, loja = None, ""
@@ -251,8 +270,15 @@ def buscar(ja_vistos: set[str]) -> list[dict]:
                 "cupom": cupom(p["texto"]),
                 "radar": True,
                 "fonte": f"@{canal}",
+                "categoria": "Fitness" if e_roupa_fitness(p["texto"]) else categoria(p["texto"]),
+                "quando": p["quando"],
+                "link_original": alvo,
+                "post": f"https://t.me/{p['id']}",
             }
             if loja == "Amazon":
+                if amazon_restantes <= 0:
+                    continue
+                amazon_restantes -= 1
                 try:
                     asin = resolver_amazon(alvo)
                 except Exception as e:
@@ -270,6 +296,6 @@ def buscar(ja_vistos: set[str]) -> list[dict]:
             achadas.append(base)
         time.sleep(1)
     print(f"[radar] resumo: {total} posts, {recentes} recentes (<{HORAS_MAX:g}h), "
-          f"{fitness} de roupa fitness; por loja: {por_loja}; aproveitáveis: {len(achadas)}")
+          f"{fitness} no nicho ({nicho or 'fitness'}); por loja: {por_loja}; aproveitáveis: {len(achadas)}")
     achadas.sort(key=lambda o: not o["converter"])   # Amazon primeiro
     return achadas
