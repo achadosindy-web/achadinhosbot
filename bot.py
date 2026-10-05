@@ -282,13 +282,37 @@ def whatsapp(texto: str, imagem: str | None) -> None:
         _zapi("send-text", {"phone": WHATSAPP_GRUPO, "message": texto})
 
 
+def _como_lista(resp) -> list:
+    """A Z-API às vezes devolve a lista direto, às vezes dentro de um objeto."""
+    if isinstance(resp, list):
+        return [x for x in resp if isinstance(x, dict)]
+    if isinstance(resp, dict):
+        for v in resp.values():
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                return v
+    return []
+
+
 def listar_grupos_whatsapp() -> str:
-    grupos = _zapi("groups?page=1&pageSize=50", metodo="get") or []
+    tentativas = []
+    grupos = []
+    for caminho in ("groups?page=1&pageSize=50", "chats?page=1&pageSize=200"):
+        try:
+            resp = _zapi(caminho, metodo="get")
+        except Exception as e:
+            tentativas.append(f"{caminho.split('?')[0]}: {e}")
+            continue
+        itens = _como_lista(resp)
+        grupos = [g for g in itens if g.get("isGroup") or str(g.get("phone", "")).endswith("-group")]
+        if grupos:
+            break
+        tentativas.append(f"{caminho.split('?')[0]}: {str(resp)[:300]}")
     if not grupos:
-        return "Não achei grupos nesse número do WhatsApp."
-    linhas = [f"• {g.get('name', '(sem nome)')}\n  {g.get('phone')}" for g in grupos]
-    return "Grupos do WhatsApp conectado:\n\n" + "\n".join(linhas) + \
-        "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO."
+        return ("Não achei grupos nesse número do WhatsApp. Resposta da Z-API:\n" +
+                "\n".join(tentativas))
+    linhas = [f"• {g.get('name') or g.get('subject') or '(sem nome)'}\n  {g.get('phone')}" for g in grupos]
+    return ("Grupos do WhatsApp conectado:\n\n" + "\n".join(linhas) +
+            "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO.")
 
 
 def marcar_manual_postada(link: str) -> None:
