@@ -243,8 +243,26 @@ def telegram(chat: str, texto: str, imagem: str | None) -> None:
 
 
 # ----------------------------- WhatsApp (Z-API) -------------------------------
+def _zapi_ids() -> tuple[str, str]:
+    """Aceita o ID/token puros ou a URL inteira colada por engano no segredo."""
+    junto = f"{ZAPI_INSTANCIA} {ZAPI_TOKEN}"
+    m = re.search(r"instances/([A-Za-z0-9]+)/token/([A-Za-z0-9]+)", junto)
+    if m:
+        return m.group(1), m.group(2)
+    inst = re.findall(r"[A-Za-z0-9]{16,}", ZAPI_INSTANCIA)
+    tok = re.findall(r"[A-Za-z0-9]{16,}", ZAPI_TOKEN)
+    return (inst[0] if inst else ZAPI_INSTANCIA), (tok[0] if tok else ZAPI_TOKEN)
+
+
+def _zapi_diagnostico() -> str:
+    inst, tok = _zapi_ids()
+    return (f"(conferência: ID da instância com {len(inst)} caracteres — o normal é 32; "
+            f"token com {len(tok)} — o normal é 24; Client-Token com {len(ZAPI_CLIENT_TOKEN)})")
+
+
 def _zapi(caminho: str, dados: dict | None = None, metodo: str = "post"):
-    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCIA}/token/{ZAPI_TOKEN}/{caminho}"
+    inst, tok = _zapi_ids()
+    url = f"https://api.z-api.io/instances/{inst}/token/{tok}/{caminho}"
     r = requests.request(metodo, url, json=dados, timeout=60,
                          headers={"Client-Token": ZAPI_CLIENT_TOKEN})
     r.raise_for_status()
@@ -309,7 +327,7 @@ def listar_grupos_whatsapp() -> str:
         tentativas.append(f"{caminho.split('?')[0]}: {str(resp)[:300]}")
     if not grupos:
         return ("Não achei grupos nesse número do WhatsApp. Resposta da Z-API:\n" +
-                "\n".join(tentativas))
+                "\n".join(tentativas) + "\n\n" + _zapi_diagnostico())
     linhas = [f"• {g.get('name') or g.get('subject') or '(sem nome)'}\n  {g.get('phone')}" for g in grupos]
     return ("Grupos do WhatsApp conectado:\n\n" + "\n".join(linhas) +
             "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO.")
