@@ -26,6 +26,8 @@ from pathlib import Path
 
 import requests
 
+import radar
+
 PASTA = Path(__file__).parent
 HISTORICO = PASTA / "historico.json"
 OFERTAS_MANUAIS = PASTA / "ofertas.csv"
@@ -39,6 +41,14 @@ TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL", "").strip()          # ex: @achadin
 TELEGRAM_MEU_CHAT = os.getenv("TELEGRAM_MEU_CHAT", "").strip()    # seu chat privado (copia p/ WhatsApp)
 NOME_GRUPO = os.getenv("NOME_GRUPO", "Achadinhos")
 AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()          # ex: achadosindy-20
+# WhatsApp automático via Z-API (não oficial: use o número dedicado do grupo)
+ZAPI_INSTANCIA = os.getenv("ZAPI_INSTANCIA", "").strip()
+ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "").strip()
+ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "").strip()
+WHATSAPP_GRUPO = os.getenv("WHATSAPP_GRUPO", "").strip()           # ex: 120363...-group
+# Radar de canais do Telegram: "aprovar" (te manda pra aprovar), "auto" (posta direto) ou "desligado"
+RADAR_MODO = os.getenv("RADAR_MODO", "aprovar").strip().lower()
+RADAR_SUGESTOES = int(os.getenv("RADAR_SUGESTOES", "5"))     # sugestões por rodada no modo aprovar
 
 # Quantas ofertas por execucao e palavras-chave para garimpar
 OFERTAS_POR_RODADA = int(os.getenv("OFERTAS_POR_RODADA", "3"))
@@ -167,13 +177,13 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
     for o in ofertas:
         if historico.get(o["id"], 0) > corte:
             continue
-        if not o.get("manual") and (o["desconto"] < DESCONTO_MINIMO
+        if not o.get("manual") and not o.get("radar") and (o["desconto"] < DESCONTO_MINIMO
                                     or o["nota"] < NOTA_MINIMA
                                     or o["vendas"] < VENDAS_MINIMAS):
             continue
         boas.append(o)
     # manuais primeiro (voce escolheu a dedo), depois as melhores da Shopee
-    boas.sort(key=lambda o: (not o.get("manual"), -pontuar(o)))
+    boas.sort(key=lambda o: (not o.get("manual"), not o.get("radar"), -pontuar(o)))
     vistos, final = set(), []
     for o in boas:
         if o["id"] in vistos:
@@ -231,6 +241,56 @@ def telegram(chat: str, texto: str, imagem: str | None) -> None:
     r.raise_for_status()
 
 
+
+# ----------------------------- WhatsApp (Z-API) -------------------------------
+def _zapi(caminho: str, dados: dict | None = None, metodo: str = "post"):
+    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCIA}/token/{ZAPI_TOKEN}/{caminho}"
+    r = requests.request(metodo, url, json=dados, timeout=60,
+                         headers={"Client-Token": ZAPI_CLIENT_TOKEN})
+    r.raise_for_status()
+    return r.json() if r.content else {}
+
+
+def _imagem_para_whatsapp(imagem: str | None) -> str | None:
+    """URL pública vai direto; foto mandada no Telegram (file_id) vira base64."""
+    if not imagem:
+        return None
+    if imagem.startswith("http"):
+        return imagem
+    try:
+        base = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+        info = requests.get(f"{base}/getFile", params={"file_id": imagem}, timeout=30).json()
+        caminho = info["result"]["file_path"]
+        foto = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{caminho}", timeout=60)
+        foto.raise_for_status()
+        import base64
+        return "data:image/jpeg;base64," + base64.b64encode(foto.content).decode()
+    except Exception as e:
+        print(f"[aviso] não consegui baixar a foto do Telegram: {e}")
+        return None
+
+
+def whatsapp_ligado() -> bool:
+    return all([ZAPI_INSTANCIA, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN, WHATSAPP_GRUPO])
+
+
+def whatsapp(texto: str, imagem: str | None) -> None:
+    img = _imagem_para_whatsapp(imagem)
+    if img:
+        _zapi("send-image", {"phone": WHATSAPP_GRUPO, "image": img, "caption": texto})
+    else:
+        _zapi("send-text", {"phone": WHATSAPP_GRUPO, "message": texto})
+
+
+def listar_grupos_whatsapp() -> str:
+    grupos = _zapi("groups?page=1&pageSize=50", metodo="get") or []
+    if not grupos:
+        return "Não achei grupos nesse número do WhatsApp."
+    linhas = [f"• {g.get('name', '(sem nome)')}\n  {g.get('phone')}" for g in grupos]
+    return "Grupos do WhatsApp conectado:\n\n" + "\n".join(linhas) + \
+        "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO."
+
+
 def marcar_manual_postada(link: str) -> None:
     linhas = list(csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8")))
     campos = list(linhas[0].keys()) if linhas else []
@@ -259,7 +319,10 @@ AJUDA = (
     "• Amazon: pode mandar o link normal do produto, eu coloco a tag de afiliado.\n"
     "• Mercado Livre: mande o link de afiliado (botão Compartilhar no app).\n"
     "• O primeiro preço é o atual; o segundo, o antigo (opcional).\n"
-    "A oferta sai na próxima rodada."
+    "A oferta sai na próxima rodada.\n\n"
+    "🔎 Radar: quando eu te mandar sugestões numeradas, responda\n"
+    "ok 3   (ou: ok 3 5 7   |   ok todas)\n"
+    "e elas entram na fila."
 )
 _NUM = r"(?:R\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|(?:R\$\s*)?\d+(?:[.,]\d{1,2})?"
 _LINHA_PRECO = re.compile(
@@ -321,6 +384,13 @@ def interpretar(texto: str) -> tuple[dict | None, str]:
     loja = _loja(url)
     nome = nome or _nome_da_url(url) or "Achadinho do dia"
     if loja == "Amazon":
+        if "amzn." in url:
+            try:
+                asin = radar.resolver_amazon(url)
+                if asin:
+                    url = radar.link_nosso(asin)
+            except Exception:
+                pass
         url = link_amazon(url)
     preco, antes = min(precos), (max(precos) if len(precos) > 1 else 0)
     return {"loja": loja, "produto": nome, "preco": f"{preco:.2f}",
@@ -342,6 +412,77 @@ def _responder(chat, texto):
                       data={"chat_id": chat, "text": texto}, timeout=20)
     except Exception:
         pass
+
+
+def _por_na_fila(oferta: dict, existentes: set) -> bool:
+    if oferta["link"] in existentes:
+        return False
+    novo = not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0
+    campos = ["loja", "produto", "preco", "preco_antes", "cupom", "link", "imagem", "postado"]
+    with open(OFERTAS_MANUAIS, "a", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=campos, extrasaction="ignore")
+        if novo:
+            w.writeheader()
+        w.writerow(oferta)
+    existentes.add(oferta["link"])
+    return True
+
+
+def _radar_para_fila(o: dict) -> dict:
+    return {"loja": o["loja"], "produto": o["nome"], "preco": f"{o['preco']:.2f}",
+            "preco_antes": f"{o['preco_antes']:.2f}" if o.get("preco_antes") else "",
+            "cupom": o.get("cupom", ""), "link": o["link"], "imagem": o.get("imagem") or "",
+            "postado": ""}
+
+
+def _aprovar_radar(chat: str, texto: str, historico: dict, existentes: set) -> int:
+    pend = historico.get("_radar_pend", {})
+    if not pend:
+        _responder(chat, "Não tenho sugestões do radar esperando aprovação agora.")
+        return 0
+    if re.search(r"tod[ao]s|tudo", texto, re.I):
+        nums = list(pend.keys())
+    else:
+        nums = re.findall(r"\d+", texto)
+    aceitas, nomes = 0, []
+    for n in nums:
+        o = pend.pop(n, None)
+        if o and _por_na_fila(o, existentes):
+            aceitas += 1
+            nomes.append(f"#{n} {o['produto'][:40]}")
+    historico["_radar_pend"] = pend
+    if aceitas:
+        _responder(chat, f"✅ Na fila ({aceitas}): " + "; ".join(nomes) +
+                   ". Já saem nesta rodada (ou na seguinte, se a fila estiver cheia).")
+    else:
+        _responder(chat, "⚠️ Não achei esses números entre as sugestões pendentes.")
+    return aceitas
+
+
+def sugerir_radar(historico: dict) -> int:
+    """Modo aprovar: manda as achadas do radar pro Telegram de vocês, numeradas."""
+    chats = [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]
+    achadas = radar.buscar(set(historico))[:RADAR_SUGESTOES]
+    if not achadas or not chats:
+        return 0
+    pend = historico.get("_radar_pend", {})
+    n = int(historico.get("_radar_n", 0))
+    for o in achadas:
+        n += 1
+        pend[str(n)] = _radar_para_fila(o)
+        historico[o["id"]] = time.time()          # não sugere de novo
+        antes = f" (de {brl(o['preco_antes'])})" if o.get("preco_antes") else ""
+        cup = f"\n🎟️ Cupom: {o['cupom']}" if o.get("cupom") else ""
+        legenda = (f"🔎 Radar #{n}\n{o['nome']}\n{brl(o['preco'])}{antes}{cup}\n"
+                   f"fonte: {o['fonte']}\n{o['link']}\n\n👉 Pra postar, responda: ok {n}")
+        for chat in chats:
+            try:
+                telegram(chat, legenda, o.get("imagem"))
+            except Exception as e:
+                print(f"[aviso] radar: não consegui mandar a sugestão para {chat}: {e}")
+    historico["_radar_pend"] = dict(list(pend.items())[-40:])
+    historico["_radar_n"] = n
+    return len(achadas)
 
 
 def ler_caixa_do_bot(historico: dict) -> int:
@@ -367,6 +508,15 @@ def ler_caixa_do_bot(historico: dict) -> int:
             continue
         if texto.lower() in ("/start", "ajuda", "/ajuda", "help"):
             _responder(chat, AJUDA)
+            continue
+        if re.match(r"^ok\b", texto, re.I):
+            novas += _aprovar_radar(chat, texto, historico, linhas_existentes)
+            continue
+        if texto.lower() in ("grupos", "/grupos"):
+            try:
+                _responder(chat, listar_grupos_whatsapp())
+            except Exception as e:
+                _responder(chat, f"⚠️ Não consegui falar com a Z-API: {e}")
             continue
         oferta, problema = interpretar(texto)
         if oferta and msg.get("photo"):
@@ -427,6 +577,21 @@ def main() -> None:
         salvar_historico(historico)
     ofertas = ler_manuais()
 
+    if RADAR_MODO == "auto":
+        try:
+            achadas = radar.buscar(set(historico))
+            print(f"[radar] {len(achadas)} oferta(s) de roupa fitness encontradas.")
+            ofertas += achadas
+        except Exception as e:
+            print(f"[aviso] radar falhou: {e}")
+    elif RADAR_MODO == "aprovar" and not teste:
+        try:
+            n = sugerir_radar(historico)
+            print(f"[radar] {n} sugestão(ões) enviada(s) para aprovação.")
+            salvar_historico(historico)
+        except Exception as e:
+            print(f"[aviso] radar falhou: {e}")
+
     if SHOPEE_APP_ID and SHOPEE_SECRET:
         for palavra in random.sample(PALAVRAS, k=min(3, len(PALAVRAS))):
             try:
@@ -449,11 +614,23 @@ def main() -> None:
             continue
         if TELEGRAM_CANAL:
             telegram(TELEGRAM_CANAL, msg, o["imagem"])
+        postou_zap = False
+        if whatsapp_ligado():
+            try:
+                whatsapp(msg, o["imagem"])
+                postou_zap = True
+            except Exception as e:
+                print(f"[aviso] WhatsApp automático falhou: {e}")
+        aviso_copia = ("✅ Já postado no WhatsApp automaticamente.\n\n" if postou_zap else
+                       ("⚠️ Não consegui postar no WhatsApp sozinho. Copie e cole:\n\n"
+                        if whatsapp_ligado() else "📋 Copie e cole no WhatsApp:\n\n"))
         for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
             try:
-                telegram(chat, "📋 Copie e cole no WhatsApp:\n\n" + msg, None)
+                telegram(chat, aviso_copia + msg, None)
             except Exception as e:
                 print(f"[aviso] não consegui mandar a cópia para {chat}: {e}")
+        if whatsapp_ligado():
+            time.sleep(random.randint(20, 45))   # intervalo humano entre posts no WhatsApp
         historico[o["id"]] = time.time()
         registrar_vitrine(o)
         if o.get("manual"):

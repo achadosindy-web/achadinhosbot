@@ -33,7 +33,12 @@ jobs:
           TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL }}
           TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT }}
           AMAZON_TAG: ${{ secrets.AMAZON_TAG }}
+          ZAPI_INSTANCIA: ${{ secrets.ZAPI_INSTANCIA }}
+          ZAPI_TOKEN: ${{ secrets.ZAPI_TOKEN }}
+          ZAPI_CLIENT_TOKEN: ${{ secrets.ZAPI_CLIENT_TOKEN }}
+          WHATSAPP_GRUPO: ${{ secrets.WHATSAPP_GRUPO }}
           OFERTAS_POR_RODADA: "2"
+          RADAR_MODO: "aprovar"     # aprovar | auto | desligado
         run: python bot.py
       - name: Guardar histórico (evita repetir oferta)
         run: |
