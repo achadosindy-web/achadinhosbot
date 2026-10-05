@@ -17,6 +17,8 @@ permissions:
 jobs:
   postar:
     runs-on: ubuntu-latest
+    env:
+      TEM_PAGINA: ${{ secrets.PAGINA_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,13 +38,33 @@ jobs:
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN }}
           GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
-          RADAR_MODO: "aprovar"
+          RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava"
         run: python bot.py
       - name: Guardar histórico (evita repetir oferta)
         run: |
           git config user.name "achadinhos-bot"
           git config user.email "bot@users.noreply.github.com"
-          for f in historico.json ofertas.csv vitrine.json; do if [ -f "$f" ]; then git add "$f"; fi; done
+          for f in historico.json ofertas.csv vitrine.json garimpo.json; do if [ -f "$f" ]; then git add "$f"; fi; done
           git diff --cached --quiet || git commit -m "histórico de postagens"
           git push || true
+      # Atualiza "Olha o que rolou no grupo" na página (repositório público "grupo").
+      # Só roda se o segredo PAGINA_TOKEN existir; se falhar, não atrapalha as postagens.
+      - name: Atualizar vitrine da página
+        if: env.TEM_PAGINA == 'true'
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: achadosindy-web/grupo
+          token: ${{ secrets.PAGINA_TOKEN }}
+          path: pagina
+      - name: Publicar vitrine e garimpo
+        if: env.TEM_PAGINA == 'true'
+        continue-on-error: true
+        run: |
+          for f in vitrine.json garimpo.json; do if [ -f "$f" ]; then cp "$f" pagina/; fi; done
+          cd pagina
+          git config user.name "achadinhos-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || (git commit -m "vitrine e garimpo atualizados" && git push)
