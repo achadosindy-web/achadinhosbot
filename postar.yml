@@ -33,9 +33,6 @@ jobs:
           TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL }}
           TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT }}
           AMAZON_TAG: ${{ secrets.AMAZON_TAG }}
-          ZAPI_INSTANCIA: ${{ secrets.ZAPI_INSTANCIA }}
-          ZAPI_TOKEN: ${{ secrets.ZAPI_TOKEN }}
-          ZAPI_CLIENT_TOKEN: ${{ secrets.ZAPI_CLIENT_TOKEN }}
           WHATSAPP_GRUPO: ${{ secrets.WHATSAPP_GRUPO }}
           GREEN_ID: ${{ secrets.GREEN_ID }}
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN }}
