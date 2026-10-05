@@ -45,11 +45,30 @@ def _limpa(trecho: str) -> str:
     return html.unescape(trecho).strip()
 
 
+PAGINAS = int(os.getenv("RADAR_PAGINAS", "3"))       # cada página = ~20 posts
+
+
 def ler_canal(canal: str) -> list[dict]:
-    r = requests.get(f"https://t.me/s/{canal}", headers=UA, timeout=30)
-    r.raise_for_status()
+    posts, antes = [], None
+    for _ in range(PAGINAS):
+        url = f"https://t.me/s/{canal}" + (f"?before={antes}" if antes else "")
+        r = requests.get(url, headers=UA, timeout=30)
+        r.raise_for_status()
+        novos = _ler_pagina(r.text)
+        if not novos:
+            break
+        posts += novos
+        ids = [int(p["id"].split("/")[-1]) for p in novos if p["id"].split("/")[-1].isdigit()]
+        if not ids:
+            break
+        antes = min(ids)
+        time.sleep(0.5)
+    return posts
+
+
+def _ler_pagina(texto_html: str) -> list[dict]:
     posts = []
-    for bloco in _POST.findall(r.text):
+    for bloco in _POST.findall(texto_html):
         m_id = re.search(r'data-post="([^"]+)"', bloco)
         m_txt = re.search(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>', bloco, re.S)
         if not (m_id and m_txt):
@@ -93,6 +112,36 @@ def resolver_amazon(url: str) -> str | None:
     return asin_de(url)
 
 
+def loja_do_link(url: str) -> str:
+    u = url.lower()
+    if "amzn." in u or "amazon.com" in u:
+        return "Amazon"
+    if "meli.la" in u or "mercadoli" in u or "mercadolibre" in u:
+        return "Mercado Livre"
+    if "shopee" in u or "shp.ee" in u:
+        return "Shopee"
+    return ""
+
+
+_IGNORAR = ("t.me/", "telegram.", "instagram.", "whatsapp.", "chat.whatsapp", "youtube.", "tiktok.")
+
+
+def seguir(url: str, saltos: int = 4) -> str:
+    """Segue encurtadores (bit.ly, links do próprio canal...) até cair numa loja."""
+    for _ in range(saltos):
+        if loja_do_link(url):
+            return url
+        try:
+            r = requests.head(url, headers=UA, allow_redirects=False, timeout=15)
+        except Exception:
+            return url
+        prox = r.headers.get("Location")
+        if not prox:
+            return url
+        url = requests.compat.urljoin(url, prox)
+    return url
+
+
 def link_nosso(asin: str) -> str:
     return f"https://www.amazon.com.br/dp/{asin}" + (f"?tag={AMAZON_TAG}" if AMAZON_TAG else "")
 
@@ -125,7 +174,7 @@ def nome_produto(texto: str) -> str:
     candidatas = []
     for linha in texto.splitlines():
         l = linha.strip(" -•*🔥⚡️✅❌👉➡️💥🛒")
-        if not l or "R$" in l or "http" in l or re.search(r"cupom|link|compre|frete", l, re.I):
+        if not l or "R$" in l or "http" in l or re.search(r"\bcupom\b|\blink\b|\bcompre\b|\bfrete\b", l, re.I):
             continue
         letras = sum(c.isalpha() for c in l)
         if letras < 8:
@@ -145,9 +194,14 @@ def cupom(texto: str) -> str:
 
 # ----------------------------- Radar ------------------------------------------
 def buscar(ja_vistos: set[str]) -> list[dict]:
-    """Ofertas novas de roupa fitness da Amazon, já com o link de vocês."""
+    """Roupa fitness achada nos canais.
+    Amazon: já volta com o link de vocês (converter=True).
+    Mercado Livre/Shopee: volta como garimpo (converter=False), pra vocês gerarem o link no app."""
     agora = datetime.now(timezone.utc)
-    achadas, asins = [], set()
+    achadas, vistos_aqui = [], set()
+    total = recentes = fitness = 0
+    por_loja: dict[str, int] = {}
+    saltos_restantes = 40                       # limite de links desconhecidos seguidos por rodada
     for canal in CANAIS:
         try:
             posts = ler_canal(canal)
@@ -156,6 +210,7 @@ def buscar(ja_vistos: set[str]) -> list[dict]:
             continue
         print(f"[radar] @{canal}: {len(posts)} posts lidos")
         for p in posts:
+            total += 1
             try:
                 if p["quando"]:
                     idade = (agora - datetime.fromisoformat(p["quando"])).total_seconds() / 3600
@@ -163,35 +218,58 @@ def buscar(ja_vistos: set[str]) -> list[dict]:
                         continue
             except ValueError:
                 pass
+            recentes += 1
             if not e_roupa_fitness(p["texto"]):
                 continue
-            amz = [l for l in p["links"] if "amzn." in l or "amazon.com.br" in l]
-            if not amz:
-                continue
-            try:
-                asin = resolver_amazon(amz[0])
-            except Exception as e:
-                print(f"[radar] link não resolveu ({amz[0]}): {e}")
-                continue
-            if not asin or asin in asins or f"radar-{asin}" in ja_vistos:
+            fitness += 1
+            alvo, loja = None, ""
+            for l in p["links"]:
+                if any(x in l.lower() for x in _IGNORAR):
+                    continue
+                loja = loja_do_link(l)
+                if not loja and saltos_restantes > 0:
+                    saltos_restantes -= 1
+                    l = seguir(l)
+                    loja = loja_do_link(l)
+                if loja:
+                    alvo = l
+                    break
+            por_loja[loja or "outra/sem link"] = por_loja.get(loja or "outra/sem link", 0) + 1
+            if not alvo:
                 continue
             preco, antes = precos(p["texto"])
             if not preco:
                 continue
-            asins.add(asin)
-            achadas.append({
-                "id": f"radar-{asin}",
-                "loja": "Amazon",
+            base = {
+                "loja": loja,
                 "nome": nome_produto(p["texto"]) or "Achadinho fitness",
                 "preco": preco,
                 "preco_antes": antes,
                 "desconto": round((1 - preco / antes) * 100) if antes > preco else 0,
                 "comissao": 0, "vendas": 0, "nota": 5,
                 "imagem": p["foto"],
-                "link": link_nosso(asin),
                 "cupom": cupom(p["texto"]),
                 "radar": True,
                 "fonte": f"@{canal}",
-            })
+            }
+            if loja == "Amazon":
+                try:
+                    asin = resolver_amazon(alvo)
+                except Exception as e:
+                    print(f"[radar] link da Amazon não resolveu ({alvo}): {e}")
+                    continue
+                if not asin or f"radar-{asin}" in ja_vistos or f"radar-{asin}" in vistos_aqui:
+                    continue
+                base.update(id=f"radar-{asin}", link=link_nosso(asin), converter=True)
+            else:
+                chave = "garimpo-" + re.sub(r"\W+", "", base["nome"].lower())[:40]
+                if chave in ja_vistos or chave in vistos_aqui:
+                    continue
+                base.update(id=chave, link=alvo, converter=False)
+            vistos_aqui.add(base["id"])
+            achadas.append(base)
         time.sleep(1)
+    print(f"[radar] resumo: {total} posts, {recentes} recentes (<{HORAS_MAX:g}h), "
+          f"{fitness} de roupa fitness; por loja: {por_loja}; aproveitáveis: {len(achadas)}")
+    achadas.sort(key=lambda o: not o["converter"])   # Amazon primeiro
     return achadas

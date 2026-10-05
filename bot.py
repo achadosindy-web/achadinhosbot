@@ -468,9 +468,20 @@ def sugerir_radar(historico: dict) -> int:
     pend = historico.get("_radar_pend", {})
     n = int(historico.get("_radar_n", 0))
     for o in achadas:
+        historico[o["id"]] = time.time()          # não sugere de novo
+        if not o.get("converter"):
+            antes = f" (de {brl(o['preco_antes'])})" if o.get("preco_antes") else ""
+            legenda = (f"⛏️ Garimpo ({o['loja']})\n{o['nome']}\n{brl(o['preco'])}{antes}\n"
+                       f"fonte: {o['fonte']}\n{o['link']}\n\n"
+                       f"👉 Gostou? Abra no app, gere o SEU link de afiliado e me mande no formato de sempre.")
+            for chat in chats:
+                try:
+                    telegram(chat, legenda, o.get("imagem"))
+                except Exception as e:
+                    print(f"[aviso] radar: não consegui mandar o garimpo para {chat}: {e}")
+            continue
         n += 1
         pend[str(n)] = _radar_para_fila(o)
-        historico[o["id"]] = time.time()          # não sugere de novo
         antes = f" (de {brl(o['preco_antes'])})" if o.get("preco_antes") else ""
         cup = f"\n🎟️ Cupom: {o['cupom']}" if o.get("cupom") else ""
         legenda = (f"🔎 Radar #{n}\n{o['nome']}\n{brl(o['preco'])}{antes}{cup}\n"
@@ -579,8 +590,8 @@ def main() -> None:
 
     if RADAR_MODO == "auto":
         try:
-            achadas = radar.buscar(set(historico))
-            print(f"[radar] {len(achadas)} oferta(s) de roupa fitness encontradas.")
+            achadas = [o for o in radar.buscar(set(historico)) if o.get("converter")]
+            print(f"[radar] {len(achadas)} oferta(s) da Amazon prontas pra postar.")
             ofertas += achadas
         except Exception as e:
             print(f"[aviso] radar falhou: {e}")
