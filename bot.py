@@ -60,8 +60,8 @@ RADAR_SUGESTOES = int(os.getenv("RADAR_SUGESTOES", "5"))     # sugestões por ro
 OFERTAS_POR_RODADA = int(os.getenv("OFERTAS_POR_RODADA", "3"))
 PALAVRAS = [p.strip() for p in os.getenv(
     "PALAVRAS",
-    "fone bluetooth,air fryer,organizador,skincare,tenis feminino,"
-    "garrafa termica,luminaria,utensilios cozinha,brinquedo,carregador"
+    "legging fitness,conjunto fitness feminino,top academia,short academia feminino,"
+    "vestido feminino,skincare,maquiagem,organizador casa,utensilios cozinha,garrafa termica"
 ).split(",") if p.strip()]
 
 # Filtros de qualidade: so posta o que vale a pena
@@ -667,6 +667,23 @@ def atualizar_painel(historico: dict) -> int:
     itens = {i["gid"]: i for i in dados.get("itens", []) if i.get("gid")}
     conhecidos = {i.get("id") for i in itens.values()}
     novos = radar.buscar(conhecidos, nicho="tudo")
+    if SHOPEE_APP_ID and SHOPEE_SECRET:
+        for palavra in random.sample(PALAVRAS, k=min(3, len(PALAVRAS))):
+            try:
+                achados = shopee_buscar(palavra)
+            except Exception as e:
+                print(f"[aviso] Shopee '{palavra}': {e}")
+                continue
+            for o in achados:
+                if o["id"] in conhecidos or o["id"] in historico:
+                    continue
+                if o.get("nota", 0) and o["nota"] < 4.5:
+                    continue
+                d = o.get("desconto") or 0
+                o.update(converter=True, categoria=radar.categoria(o["nome"]), fonte="Shopee",
+                         preco_antes=round(o["preco"] / (1 - d / 100), 2) if 0 < d < 100 else 0)
+                novos.append(o)
+            print(f"[painel] Shopee '{palavra}': {len(achados)} produto(s)")
     agora = datetime.now(BR)
     for o in novos:
         gid = _gid(o["id"])
@@ -872,14 +889,14 @@ def main() -> None:
         except Exception as e:
             print(f"[aviso] radar falhou: {e}")
 
-    if SHOPEE_APP_ID and SHOPEE_SECRET:
+    if SHOPEE_APP_ID and SHOPEE_SECRET and RADAR_MODO == "auto":
         for palavra in random.sample(PALAVRAS, k=min(3, len(PALAVRAS))):
             try:
                 ofertas += shopee_buscar(palavra)
             except Exception as e:  # uma palavra falhar nao derruba o resto
                 print(f"[aviso] Shopee '{palavra}': {e}")
-    elif not ofertas:
-        print("Sem credenciais da Shopee e sem ofertas no ofertas.csv. Nada a postar.")
+    if not ofertas:
+        print("Nenhuma oferta aprovada na fila (ofertas.csv). Nada a postar.")
         return
 
     escolhidas = escolher(ofertas, historico)
