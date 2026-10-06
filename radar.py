@@ -15,8 +15,8 @@ import requests
 
 AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()
 CANAIS = [c.strip().lstrip("@") for c in os.getenv(
-    "RADAR_CANAIS", "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadinhosdamanoella,modafemininaofertas,laniceachados,glowupestilofeminino,segredodoscosmeticos,belezaempromocao,skincareecapilar,topmaquiagemeflores,acheinashopee_casa,achadoscasaedecor,achadinhosdadri,mundocasaeachados,achadosfitnessbr,modafitnesselook,glowupfitnessbr,achadosshopebrasil,achadosimperdiveisbr,achadinhosdarachel,ofertasfemininas,detectordecupons").split(",") if c.strip()]
-HORAS_MAX = float(os.getenv("RADAR_HORAS", "8"))      # ignora posts mais velhos que isso
+    "RADAR_CANAIS", "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadinhosdamanoella,modafemininaofertas,laniceachados,glowupestilofeminino,segredodoscosmeticos,belezaempromocao,skincareecapilar,topmaquiagemeflores,acheinashopee_casa,achadoscasaedecor,achadinhosdadri,mundocasaeachados,achadosfitnessbr,modafitnesselook,glowupfitnessbr,achadosshopebrasil,achadosimperdiveisbr,achadinhosdarachel,ofertasfemininas,detectordecupons,guerradealsfit").split(",") if c.strip()]
+HORAS_MAX = float(os.getenv("RADAR_HORAS", "12"))      # ignora posts mais velhos que isso
 UA = {"User-Agent": "Mozilla/5.0 (compatible; AchadinhosBot/1.0)"}
 
 # ----------------------------- Nicho: roupas fitness ---------------------------
@@ -91,8 +91,12 @@ def _ler_pagina(texto_html: str) -> list[dict]:
         if not (m_id and m_txt):
             continue
         links = [html.unescape(h) for h in re.findall(r'href="(https?://[^"]+)"', m_txt.group(1))]
+        # botões abaixo do post ("Comprar", "Ver oferta") e links soltos no bloco
         links += [html.unescape(h) for h in re.findall(r'href="(https?://[^"]+)"', bloco)
-                  if "amzn" in h or "amazon." in h]
+                  if "t.me/" not in h and "telegram." not in h]
+        # links escritos no texto sem virar link clicável
+        links += re.findall(r"(?:https?://)?(?:amzn\.to|meli\.la|s\.shopee\.com\.br|shope\.ee)/[A-Za-z0-9]+", _limpa(m_txt.group(1)))
+        links = [l if l.startswith("http") else "https://" + l for l in links]
         foto = re.search(r"tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)", bloco)
         quando = re.search(r'<time datetime="([^"]+)"', bloco)
         posts.append({
@@ -143,20 +147,37 @@ def loja_do_link(url: str) -> str:
 _IGNORAR = ("t.me/", "telegram.", "instagram.", "whatsapp.", "chat.whatsapp", "youtube.", "tiktok.")
 
 
+UA_NAV = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
+                        "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+          "Accept-Language": "pt-BR,pt;q=0.9"}
+_LOJA_NA_PAGINA = re.compile(
+    r"https?://(?:amzn\.to|(?:www\.)?amazon\.com\.br|meli\.la|(?:produto\.|www\.)?mercadolivre\.com\.br|"
+    r"s\.shopee\.com\.br|shope\.ee|(?:www\.)?shopee\.com\.br)/[^\s\"'<>\\]+", re.I)
+_cache_seguir: dict[str, str] = {}
+
+
 def seguir(url: str, saltos: int = 4) -> str:
-    """Segue encurtadores (bit.ly, links do próprio canal...) até cair numa loja."""
-    for _ in range(saltos):
-        if loja_do_link(url):
-            return url
-        try:
-            r = requests.head(url, headers=UA, allow_redirects=False, timeout=15)
-        except Exception:
-            return url
-        prox = r.headers.get("Location")
-        if not prox:
-            return url
-        url = requests.compat.urljoin(url, prox)
-    return url
+    """Descobre a loja por trás de encurtadores e sites de promoção (pelando, promotop...).
+    Segue os redirecionamentos e, se cair numa página que não é loja, procura o link da loja dentro dela."""
+    if loja_do_link(url):
+        return url
+    if url in _cache_seguir:
+        return _cache_seguir[url]
+    final = url
+    try:
+        r = requests.get(url, headers=UA_NAV, timeout=12, allow_redirects=True)
+        final = r.url
+        if not loja_do_link(final) and "text/html" in r.headers.get("Content-Type", ""):
+            achados = [html.unescape(m) for m in _LOJA_NA_PAGINA.findall(r.text[:600_000])]
+            # prefere link curto de afiliado/produto; ignora páginas genéricas da loja
+            achados = [a for a in achados if not re.search(r"\.(png|jpe?g|webp|svg|js|css)(\?|$)", a, re.I)]
+            produto = [a for a in achados if re.search(r"amzn\.to|meli\.la|s\.shopee|shope\.ee|/dp/|/MLB-?\d|/p/MLB|-i\.\d+\.\d+", a, re.I)]
+            if produto or achados:
+                final = (produto or achados)[0]
+    except Exception:
+        pass
+    _cache_seguir[url] = final
+    return final
 
 
 def link_nosso(asin: str) -> str:
@@ -216,9 +237,9 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     Mercado Livre/Shopee: volta como garimpo (converter=False), pra vocês gerarem o link no app."""
     agora = datetime.now(timezone.utc)
     achadas, vistos_aqui = [], set()
-    total = recentes = fitness = 0
+    total = recentes = fitness = sem_preco = 0
     por_loja: dict[str, int] = {}
-    saltos_restantes = 40                       # limite de links desconhecidos seguidos por rodada
+    saltos_restantes = 150                      # limite de links desconhecidos seguidos por rodada
     amazon_restantes = 80                       # limite de links da Amazon resolvidos por rodada
     for canal in CANAIS:
         try:
@@ -258,6 +279,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                 continue
             preco, antes = precos(p["texto"])
             if not preco:
+                sem_preco += 1
                 continue
             base = {
                 "loja": loja,
@@ -296,6 +318,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
             achadas.append(base)
         time.sleep(1)
     print(f"[radar] resumo: {total} posts, {recentes} recentes (<{HORAS_MAX:g}h), "
-          f"{fitness} no nicho ({nicho or 'fitness'}); por loja: {por_loja}; aproveitáveis: {len(achadas)}")
+          f"{fitness} no nicho ({nicho or 'fitness'}); por loja: {por_loja}; sem preço: {sem_preco}; "
+          f"aproveitáveis: {len(achadas)}")
     achadas.sort(key=lambda o: not o["converter"])   # Amazon primeiro
     return achadas
