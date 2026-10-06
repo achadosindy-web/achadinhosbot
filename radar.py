@@ -165,7 +165,7 @@ def seguir(url: str, saltos: int = 4) -> str:
         return _cache_seguir[url]
     final = url
     try:
-        r = requests.get(url, headers=UA_NAV, timeout=12, allow_redirects=True)
+        r = requests.get(url, headers=UA_NAV, timeout=8, allow_redirects=True)
         final = r.url
         if not loja_do_link(final) and "text/html" in r.headers.get("Content-Type", ""):
             achados = [html.unescape(m) for m in _LOJA_NA_PAGINA.findall(r.text[:600_000])]
@@ -205,7 +205,8 @@ def precos(texto: str) -> tuple[float, float]:
     valores = [v for v in valores if v > 0]
     if not valores:
         # preço sem "R$": "Por 59,90", "Preço: 89,90", "💰 49,90"
-        m = re.search(r"(?:\bpor\b|pre[cç]o|valor|apenas|\bs[oó]\b|💰|💵|🔥|➡️|👉)\s*:?\s*(\d{1,4}(?:\.\d{3})*,\d{2})\b", t, re.I)
+        m = re.search(r"(?:\bpor\b|pre[cç]o|valor|apenas|\bs[oó]\b|💰|💵|🔥|➡️|👉)\s*:?\s*"
+                      r"(\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+,\d{2}|\d{2,4})(?![\d,.]*\s*(?:x\b|%|vezes|parcela))", t, re.I)
         if m:
             return _num(m.group(1)), 0.0
         return 0.0, 0.0
@@ -246,7 +247,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     total = recentes = fitness = sem_preco = repetidos = 0
     ex_sem_preco, ex_sem_link = [], []
     por_loja: dict[str, int] = {}
-    saltos_restantes = 150                      # limite de links desconhecidos seguidos por rodada
+    saltos_restantes = 400                      # limite de links desconhecidos seguidos por rodada
     amazon_restantes = 80                       # limite de links da Amazon resolvidos por rodada
     for canal in CANAIS:
         try:
@@ -283,8 +284,9 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     break
             por_loja[loja or "outra/sem link"] = por_loja.get(loja or "outra/sem link", 0) + 1
             if not alvo:
-                if len(ex_sem_link) < 3:
-                    ex_sem_link.append(f"@{canal}: " + " | ".join(p["links"][:2] or ["(sem link)"])[:120])
+                if len(ex_sem_link) < 5 and p["links"]:
+                    l0 = next((l for l in p["links"] if not any(x in l.lower() for x in _IGNORAR)), p["links"][0])
+                    ex_sem_link.append(f"@{canal}: {l0[:70]} => {_cache_seguir.get(l0, '(não seguido)')[:90]}")
                 continue
             preco, antes = precos(p["texto"])
             if not preco:
