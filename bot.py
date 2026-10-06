@@ -746,12 +746,15 @@ def ler_caixa_do_bot(historico: dict) -> int:
     """Lê o que vocês mandaram pro bot e coloca na fila (ofertas.csv)."""
     autorizados = {c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()}
     if not TELEGRAM_TOKEN or not autorizados:
+        print("[caixa] TELEGRAM_TOKEN ou TELEGRAM_MEU_CHAT vazio: não li as mensagens do robô.")
         return 0
     offset = int(historico.get("_tg_offset", 0))
     r = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates",
                      params={"offset": offset, "timeout": 0,
                              "allowed_updates": json.dumps(["message"])}, timeout=30)
     r.raise_for_status()
+    print(f"[caixa] {len(r.json().get('result', []))} mensagem(ns) nova(s) no robô; "
+          f"{len(autorizados)} chat(s) autorizado(s).")
     novas = 0
     linhas_existentes = set()
     if OFERTAS_MANUAIS.exists():
@@ -761,8 +764,15 @@ def ler_caixa_do_bot(historico: dict) -> int:
         msg = up.get("message") or {}
         chat = str((msg.get("chat") or {}).get("id", ""))
         texto = (msg.get("text") or msg.get("caption") or "").strip()
-        if chat not in autorizados or not texto:
+        if not texto:
             continue
+        if chat not in autorizados:
+            print(f"[caixa] mensagem ignorada: chat {chat} não está no TELEGRAM_MEU_CHAT")
+            if (msg.get("chat") or {}).get("type") == "private":
+                _responder(chat, f"⚠️ Ainda não te conheço. Seu ID é {chat}: peça pra incluir "
+                                 "esse número no TELEGRAM_MEU_CHAT e mande o link de novo.")
+            continue
+        print(f"[caixa] mensagem recebida de {chat}")
         comando = re.sub(r"^/start\s+", "", texto.strip())
         if comando != texto.strip() or re.match(r"^(ok|ml|sp|az)_[a-f0-9]{6}", comando):
             r_painel = _aprovar_do_painel(chat, comando, historico, linhas_existentes)
