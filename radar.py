@@ -62,7 +62,7 @@ def _limpa(trecho: str) -> str:
     return html.unescape(trecho).strip()
 
 
-PAGINAS = int(os.getenv("RADAR_PAGINAS", "3"))       # cada página = ~20 posts
+PAGINAS = int(os.getenv("RADAR_PAGINAS", "5"))       # cada página = ~20 posts
 
 
 def ler_canal(canal: str) -> list[dict]:
@@ -185,10 +185,12 @@ def link_nosso(asin: str) -> str:
 
 
 # ----------------------------- Texto do post -----------------------------------
-_RS = r"R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:,\d{2})?)"
+_RS = r"R\s?\$\s*(\d+\.\d{2}(?![\d.,])|\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
 
 
 def _num(t: str) -> float:
+    if re.fullmatch(r"\d+\.\d{1,2}", t):          # 59.90 (ponto como decimal)
+        return float(t)
     return float(t.replace(".", "").replace(",", "."))
 
 
@@ -202,6 +204,10 @@ def precos(texto: str) -> tuple[float, float]:
     valores = [_num(v) for v in re.findall(_RS, t)]
     valores = [v for v in valores if v > 0]
     if not valores:
+        # preço sem "R$": "Por 59,90", "Preço: 89,90", "💰 49,90"
+        m = re.search(r"(?:\bpor\b|pre[cç]o|valor|apenas|\bs[oó]\b|💰|💵|🔥|➡️|👉)\s*:?\s*(\d{1,4}(?:\.\d{3})*,\d{2})\b", t, re.I)
+        if m:
+            return _num(m.group(1)), 0.0
         return 0.0, 0.0
     if len(valores) >= 2 and max(valores) > min(valores) * 1.05:
         return min(valores), max(valores)
@@ -237,7 +243,8 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     Mercado Livre/Shopee: volta como garimpo (converter=False), pra vocês gerarem o link no app."""
     agora = datetime.now(timezone.utc)
     achadas, vistos_aqui = [], set()
-    total = recentes = fitness = sem_preco = 0
+    total = recentes = fitness = sem_preco = repetidos = 0
+    ex_sem_preco, ex_sem_link = [], []
     por_loja: dict[str, int] = {}
     saltos_restantes = 150                      # limite de links desconhecidos seguidos por rodada
     amazon_restantes = 80                       # limite de links da Amazon resolvidos por rodada
@@ -276,10 +283,14 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     break
             por_loja[loja or "outra/sem link"] = por_loja.get(loja or "outra/sem link", 0) + 1
             if not alvo:
+                if len(ex_sem_link) < 3:
+                    ex_sem_link.append(f"@{canal}: " + " | ".join(p["links"][:2] or ["(sem link)"])[:120])
                 continue
             preco, antes = precos(p["texto"])
             if not preco:
                 sem_preco += 1
+                if len(ex_sem_preco) < 3:
+                    ex_sem_preco.append(f"@{canal}: " + p["texto"].replace("\n", " / ")[:140])
                 continue
             base = {
                 "loja": loja,
@@ -306,12 +317,16 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                 except Exception as e:
                     print(f"[radar] link da Amazon não resolveu ({alvo}): {e}")
                     continue
-                if not asin or f"radar-{asin}" in ja_vistos or f"radar-{asin}" in vistos_aqui:
+                if not asin:
+                    continue
+                if f"radar-{asin}" in ja_vistos or f"radar-{asin}" in vistos_aqui:
+                    repetidos += 1
                     continue
                 base.update(id=f"radar-{asin}", link=link_nosso(asin), converter=True)
             else:
                 chave = "garimpo-" + re.sub(r"\W+", "", base["nome"].lower())[:40]
                 if chave in ja_vistos or chave in vistos_aqui:
+                    repetidos += 1
                     continue
                 base.update(id=chave, link=alvo, converter=False)
             vistos_aqui.add(base["id"])
@@ -319,6 +334,10 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
         time.sleep(1)
     print(f"[radar] resumo: {total} posts, {recentes} recentes (<{HORAS_MAX:g}h), "
           f"{fitness} no nicho ({nicho or 'fitness'}); por loja: {por_loja}; sem preço: {sem_preco}; "
-          f"aproveitáveis: {len(achadas)}")
+          f"repetidos/já no painel: {repetidos}; aproveitáveis: {len(achadas)}")
+    for e in ex_sem_preco:
+        print(f"[radar]   exemplo sem preço -> {e}")
+    for e in ex_sem_link:
+        print(f"[radar]   exemplo sem link de loja -> {e}")
     achadas.sort(key=lambda o: not o["converter"])   # Amazon primeiro
     return achadas
