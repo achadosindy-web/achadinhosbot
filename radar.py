@@ -15,7 +15,7 @@ import requests
 
 AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()
 CANAIS = [c.strip().lstrip("@") for c in os.getenv(
-    "RADAR_CANAIS", "urubupromo,pobregram,pelandobr,promotop,Postou_Achou").split(",") if c.strip()]
+  RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadinhosdamanoella,modafemininaofertas,laniceachados,glowupestilofeminino,segredodoscosmeticos,belezaempromocao,skincareecapilar,topmaquiagemeflores,acheinashopee_casa,achadoscasaedecor,achadinhosdadri,mundocasaeachados,achadosfitnessbr,modafitnesselook,glowupfitnessbr,achadosshopebrasil,achadosimperdiveisbr,achadinhosdarachel,ofertasfemininas,detectordecupons").split(",") if c.strip()]
 HORAS_MAX = float(os.getenv("RADAR_HORAS", "8"))      # ignora posts mais velhos que isso
 UA = {"User-Agent": "Mozilla/5.0 (compatible; AchadinhosBot/1.0)"}
 
