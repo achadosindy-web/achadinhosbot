@@ -30,16 +30,22 @@ from html import unescape as html_unescape
 import radar
 
 PASTA = Path(__file__).parent
-HISTORICO = PASTA / "historico.json"
-OFERTAS_MANUAIS = PASTA / "ofertas.csv"
-VITRINE = PASTA / "vitrine.json"   # últimos achados, mostrados na página do grupo
-GARIMPO = PASTA / "garimpo.json"   # tudo que o radar achou, mostrado no painel de vocês
+# PERFIL separa os dados de cada operação (ex.: "geral" -> perfis/geral/).
+# Sem PERFIL (ou "ingrid") os arquivos ficam na raiz, como sempre foi.
+PERFIL = os.getenv("PERFIL", "").strip().lower()
+DADOS = PASTA if PERFIL in ("", "ingrid") else PASTA / "perfis" / PERFIL
+DADOS.mkdir(parents=True, exist_ok=True)
+HISTORICO = DADOS / "historico.json"
+OFERTAS_MANUAIS = DADOS / "ofertas.csv"
+VITRINE = DADOS / "vitrine.json"   # últimos achados, mostrados na página do grupo
+GARIMPO = DADOS / "garimpo.json"   # tudo que o radar achou, mostrado no painel de vocês
 
 # ---------- Configuracao (vem das variaveis de ambiente / segredos) ----------
 SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "").strip()
 SHOPEE_SECRET = os.getenv("SHOPEE_SECRET", "").strip()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
-TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL", "").strip()          # ex: @achadinhosdaingrid
+TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL", "").strip()          # ex: @achadinhosdaingrid (pode ser lista: @a,@b)
+CANAIS_TELEGRAM = [c.strip() for c in TELEGRAM_CANAL.split(",") if c.strip()]
 TELEGRAM_MEU_CHAT = os.getenv("TELEGRAM_MEU_CHAT", "").strip()    # seu chat privado (copia p/ WhatsApp)
 NOME_GRUPO = os.getenv("NOME_GRUPO", "Achadinhos")
 AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()          # ex: achadosindy-20
@@ -47,7 +53,8 @@ AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()          # ex: achadosindy-20
 ZAPI_INSTANCIA = os.getenv("ZAPI_INSTANCIA", "").strip()
 ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "").strip()
-WHATSAPP_GRUPO = os.getenv("WHATSAPP_GRUPO", "").strip()           # ex: 120363...-group
+WHATSAPP_GRUPO = os.getenv("WHATSAPP_GRUPO", "").strip()           # ex: 120363...-group (pode ser lista: a,b,c)
+GRUPOS_WHATSAPP = [g.strip() for g in WHATSAPP_GRUPO.split(",") if g.strip()]
 # Alternativa grátis: Green-API (plano Developer, até 3 conversas: basta pro grupo)
 GREEN_ID = os.getenv("GREEN_ID", "").strip()
 GREEN_TOKEN = os.getenv("GREEN_TOKEN", "").strip()
@@ -69,6 +76,8 @@ DESCONTO_MINIMO = int(os.getenv("DESCONTO_MINIMO", "20"))   # % de desconto
 NOTA_MINIMA = float(os.getenv("NOTA_MINIMA", "4.5"))        # estrelas
 VENDAS_MINIMAS = int(os.getenv("VENDAS_MINIMAS", "100"))
 DIAS_SEM_REPETIR = 7
+# Garimpo: só guarda achados com pelo menos esse desconto (0 = guarda tudo). Black Friday usa 40.
+DESCONTO_GARIMPO = int(os.getenv("DESCONTO_GARIMPO", "0"))
 
 SHOPEE_URL = "https://open-api.affiliate.shopee.com.br/graphql"
 BR = timezone(timedelta(hours=-3))
@@ -299,7 +308,7 @@ def _usa_green() -> bool:
 
 
 def whatsapp_ligado() -> bool:
-    if not WHATSAPP_GRUPO:
+    if not GRUPOS_WHATSAPP:
         return False
     return _usa_green() or all([ZAPI_INSTANCIA, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN])
 
@@ -312,8 +321,7 @@ def _green(metodo_api: str, **kw):
     return r.json() if r.content else {}
 
 
-def _grupo_green() -> str:
-    g = WHATSAPP_GRUPO
+def _grupo_green(g: str) -> str:
     return g.replace("-group", "@g.us") if g.endswith("-group") else g
 
 
@@ -335,26 +343,44 @@ def _imagem_bytes(imagem: str | None) -> bytes | None:
         return None
 
 
-def whatsapp(texto: str, imagem: str | None) -> None:
+def _whatsapp_um(grupo: str, texto: str, imagem: str | None, foto: bytes | None) -> None:
     if _usa_green():
-        foto = _imagem_bytes(imagem)
+        chat = _grupo_green(grupo)
         if foto:
-            resp = _green("sendFileByUpload", data={"chatId": _grupo_green(), "caption": texto},
+            resp = _green("sendFileByUpload", data={"chatId": chat, "caption": texto},
                           files={"file": ("achadinho.jpg", foto, "image/jpeg")})
         else:
-            resp = _green("sendMessage", json={"chatId": _grupo_green(), "message": texto})
-        print(f"[whatsapp] Green-API -> {_grupo_green()}: {resp}")
+            resp = _green("sendMessage", json={"chatId": chat, "message": texto})
+        print(f"[whatsapp] Green-API -> {chat}: {resp}")
         if not (isinstance(resp, dict) and resp.get("idMessage")):
             raise RuntimeError(f"Green-API não confirmou o envio: {resp}")
         return
     img = _imagem_para_whatsapp(imagem)
     if img:
-        resp = _zapi("send-image", {"phone": WHATSAPP_GRUPO, "image": img, "caption": texto})
+        resp = _zapi("send-image", {"phone": grupo, "image": img, "caption": texto})
     else:
-        resp = _zapi("send-text", {"phone": WHATSAPP_GRUPO, "message": texto})
-    print(f"[whatsapp] Z-API -> {WHATSAPP_GRUPO}: {resp}")
+        resp = _zapi("send-text", {"phone": grupo, "message": texto})
+    print(f"[whatsapp] Z-API -> {grupo}: {resp}")
     if isinstance(resp, dict) and resp.get("error"):
         raise RuntimeError(f"Z-API recusou: {resp}")
+
+
+def whatsapp(texto: str, imagem: str | None) -> int:
+    """Manda para todos os grupos de WHATSAPP_GRUPO. Devolve em quantos deu certo."""
+    foto = _imagem_bytes(imagem) if _usa_green() else None   # baixa a foto uma vez só
+    certos, erros = 0, []
+    for i, grupo in enumerate(GRUPOS_WHATSAPP):
+        if i:
+            time.sleep(random.randint(6, 12))   # respiro entre um grupo e outro
+        try:
+            _whatsapp_um(grupo, texto, imagem, foto)
+            certos += 1
+        except Exception as e:
+            erros.append(f"{grupo}: {e}")
+            print(f"[aviso] WhatsApp {grupo} falhou: {e}")
+    if not certos:
+        raise RuntimeError("; ".join(erros) or "nenhum grupo configurado")
+    return certos
 
 
 def _foto_amazon(link: str) -> str | None:
@@ -411,7 +437,7 @@ def listar_grupos_whatsapp() -> str:
             return f"Não achei grupos nesse número (Green-API). Resposta: {str(contatos)[:300]}"
         return ("Grupos do WhatsApp conectado (Green-API):\n\n" +
                 "\n".join(f"• {g.get('name') or '(sem nome)'}\n  {g.get('id')}" for g in grupos) +
-                "\n\nCopie o código do grupo (termina em @g.us) para o segredo WHATSAPP_GRUPO.")
+                "\n\nCopie o código do grupo (termina em @g.us) para o segredo WHATSAPP_GRUPO (no perfil geral, WHATSAPP_GRUPO_GERAL; vários grupos separados por vírgula).")
     tentativas = []
     grupos = []
     for caminho in ("groups?page=1&pageSize=50", "chats?page=1&pageSize=200"):
@@ -430,7 +456,7 @@ def listar_grupos_whatsapp() -> str:
                 "\n".join(tentativas) + "\n\n" + _zapi_diagnostico())
     linhas = [f"• {g.get('name') or g.get('subject') or '(sem nome)'}\n  {g.get('phone')}" for g in grupos]
     return ("Grupos do WhatsApp conectado:\n\n" + "\n".join(linhas) +
-            "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO.")
+            "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO (no perfil geral, WHATSAPP_GRUPO_GERAL; vários grupos separados por vírgula).")
 
 
 def marcar_manual_postada(link: str) -> None:
@@ -685,10 +711,14 @@ def atualizar_painel(historico: dict) -> int:
                 novos.append(o)
             print(f"[painel] Shopee '{palavra}': {len(achados)} produto(s)")
     agora = datetime.now(BR)
+    adicionados = 0
     for o in novos:
         gid = _gid(o["id"])
         if gid in itens:
             continue
+        if DESCONTO_GARIMPO and (o.get("desconto") or 0) < DESCONTO_GARIMPO:
+            continue
+        adicionados += 1
         itens[gid] = {
             "gid": gid, "id": o["id"], "loja": o["loja"], "nome": o["nome"],
             "preco": o["preco"], "preco_antes": o.get("preco_antes") or 0,
@@ -713,7 +743,7 @@ def atualizar_painel(historico: dict) -> int:
         "bot": _usuario_do_bot(historico),
         "itens": lista[:250],
     }, ensure_ascii=False, indent=1), encoding="utf-8")
-    return len(novos)
+    return adicionados
 
 
 _PREFIXOS = {"ml": "https://meli.la/", "sp": "https://s.shopee.com.br/", "az": "https://amzn.to/"}
@@ -911,16 +941,20 @@ def main() -> None:
         print("=" * 50 + "\n" + msg + "\n")
         if teste:
             continue
-        if TELEGRAM_CANAL:
-            telegram(TELEGRAM_CANAL, msg, o["imagem"])
-        postou_zap = False
+        for canal in CANAIS_TELEGRAM:
+            try:
+                telegram(canal, msg, o["imagem"])
+            except Exception as e:
+                print(f"[aviso] não consegui postar no canal {canal}: {e}")
+        postou_zap = 0
         if whatsapp_ligado():
             try:
-                whatsapp(msg, o["imagem"])
-                postou_zap = True
+                postou_zap = whatsapp(msg, o["imagem"])
             except Exception as e:
                 print(f"[aviso] WhatsApp automático falhou: {e}")
-        aviso_copia = ("✅ Já postado no WhatsApp automaticamente.\n\n" if postou_zap else
+        parcial = (f" (em {postou_zap} de {len(GRUPOS_WHATSAPP)} grupos)"
+                   if 0 < postou_zap < len(GRUPOS_WHATSAPP) else "")
+        aviso_copia = (f"✅ Já postado no WhatsApp automaticamente{parcial}.\n\n" if postou_zap else
                        ("⚠️ Não consegui postar no WhatsApp sozinho. Copie e cole:\n\n"
                         if whatsapp_ligado() else "📋 Copie e cole no WhatsApp:\n\n"))
         for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
