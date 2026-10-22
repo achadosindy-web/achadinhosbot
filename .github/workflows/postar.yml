@@ -1,10 +1,22 @@
 # Roda o agente nos servidores do GitHub.
 # Quem chama no horário certo é o cron-job.org (9h, 12h, 15h, 19h e 21h de Brasília).
 # Também dá pra rodar na mão: Actions > Postar achadinhos > Run workflow.
+#
+# Dois perfis no mesmo robô:
+#   ingrid -> grupo fitness da Ingrid (segredos de sempre, arquivos na raiz)
+#   geral  -> grupos de achadinhos em geral (segredos terminados em _GERAL, arquivos em perfis/geral/)
+#   blackfriday -> grupo de Black Friday, só descontos grandes (segredos _BF, arquivos em perfis/blackfriday/)
+# Cada perfil novo só roda depois que o segredo do bot dele existir (TELEGRAM_TOKEN_GERAL / TELEGRAM_TOKEN_BF).
 name: Postar achadinhos
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      perfil:
+        description: "Qual perfil rodar"
+        type: choice
+        options: [todos, ingrid, geral, blackfriday]
+        default: todos
 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
 concurrency:
@@ -19,14 +31,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TEM_PAGINA: ${{ secrets.PAGINA_TOKEN != '' }}
+      TEM_GERAL: ${{ secrets.TELEGRAM_TOKEN_GERAL != '' }}
+      TEM_BF: ${{ secrets.TELEGRAM_TOKEN_BF != '' }}
+      PERFIL_PEDIDO: ${{ inputs.perfil || 'todos' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - name: Postar ofertas
+
+      # ---------------- Perfil Ingrid (fitness) ----------------
+      - name: Postar ofertas (Ingrid)
+        if: env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'ingrid'
+        continue-on-error: true
         env:
+          PERFIL: ingrid
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -41,17 +61,71 @@ jobs:
           RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadinhosdamanoella,modafemininaofertas,laniceachados,glowupestilofeminino,segredodoscosmeticos,belezaempromocao,skincareecapilar,topmaquiagemeflores,acheinashopee_casa,achadoscasaedecor,achadinhosdadri,mundocasaeachados,achadosfitnessbr,modafitnesselook,glowupfitnessbr,achadosshopebrasil,achadosimperdiveisbr,achadinhosdarachel,ofertasfemininas,detectordecupons,guerradealsfit"
         run: python bot.py
+
+      # ---------------- Perfil Geral (achadinhos em geral) ----------------
+      # Segredos próprios terminados em _GERAL. Os que não existirem usam os da Ingrid
+      # (Shopee, Amazon, Green-API e seu chat do Telegram podem ser os mesmos).
+      - name: Postar ofertas (Geral)
+        if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'geral') && env.TEM_GERAL == 'true'
+        continue-on-error: true
+        env:
+          PERFIL: geral
+          SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
+          SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_GERAL }}
+          TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL_GERAL }}
+          TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT_GERAL || secrets.TELEGRAM_MEU_CHAT }}
+          AMAZON_TAG: ${{ secrets.AMAZON_TAG_GERAL || secrets.AMAZON_TAG }}
+          WHATSAPP_GRUPO: ${{ secrets.WHATSAPP_GRUPO_GERAL }}
+          GREEN_ID: ${{ secrets.GREEN_ID_GERAL || secrets.GREEN_ID }}
+          GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_GERAL || secrets.GREEN_TOKEN }}
+          GREEN_URL: ${{ secrets.GREEN_URL_GERAL || secrets.GREEN_URL }}
+          OFERTAS_POR_RODADA: "3"
+          RADAR_MODO: "painel"
+          RADAR_NICHO: "tudo"
+          PALAVRAS: "fone bluetooth,smartwatch,air fryer,caixa de som bluetooth,carregador turbo,organizador casa,utensilios cozinha,garrafa termica,kit ferramentas,aspirador portatil,luminaria led,mochila,perfume,brinquedo infantil,suporte celular"
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao"
+        run: python bot.py
+
+      # ---------------- Perfil Black Friday (só descontos grandes) ----------------
+      - name: Postar ofertas (Black Friday)
+        if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'blackfriday') && env.TEM_BF == 'true'
+        continue-on-error: true
+        env:
+          PERFIL: blackfriday
+          SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
+          SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BF }}
+          TELEGRAM_CANAL: ${{ secrets.TELEGRAM_CANAL_BF }}
+          TELEGRAM_MEU_CHAT: ${{ secrets.TELEGRAM_MEU_CHAT_BF || secrets.TELEGRAM_MEU_CHAT }}
+          AMAZON_TAG: ${{ secrets.AMAZON_TAG_BF || secrets.AMAZON_TAG }}
+          WHATSAPP_GRUPO: ${{ secrets.WHATSAPP_GRUPO_BF }}
+          GREEN_ID: ${{ secrets.GREEN_ID_BF || secrets.GREEN_ID }}
+          GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_BF || secrets.GREEN_TOKEN }}
+          GREEN_URL: ${{ secrets.GREEN_URL_BF || secrets.GREEN_URL }}
+          OFERTAS_POR_RODADA: "3"
+          RADAR_MODO: "painel"
+          RADAR_NICHO: "tudo"
+          DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais
+          PALAVRAS: "smart tv,notebook,celular,fone bluetooth,smartwatch,air fryer,geladeira,maquina de lavar,ventilador,cafeteira,perfume importado,tenis,console,tablet,aspirador robo"
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao,guerradealsfit"
+        run: python bot.py
+
       - name: Guardar histórico (evita repetir oferta)
+        if: always()
         run: |
           git config user.name "achadinhos-bot"
           git config user.email "bot@users.noreply.github.com"
           for f in historico.json ofertas.csv vitrine.json garimpo.json; do if [ -f "$f" ]; then git add "$f"; fi; done
+          if [ -d perfis ]; then git add perfis; fi
           git diff --cached --quiet || git commit -m "histórico de postagens"
           git push || true
-      # Atualiza "Olha o que rolou no grupo" na página (repositório público "grupo").
+
+      # Atualiza a página e os painéis (repositório público "grupo").
+      # Ingrid: raiz do site. Outros perfis: pasta com o nome do perfil (geral/, blackfriday/).
       # Só roda se o segredo PAGINA_TOKEN existir; se falhar, não atrapalha as postagens.
-      - name: Atualizar vitrine da página
-        if: env.TEM_PAGINA == 'true'
+      - name: Abrir repositório da página
+        if: always() && env.TEM_PAGINA == 'true'
         continue-on-error: true
         uses: actions/checkout@v4
         with:
@@ -59,10 +133,15 @@ jobs:
           token: ${{ secrets.PAGINA_TOKEN }}
           path: pagina
       - name: Publicar vitrine e garimpo
-        if: env.TEM_PAGINA == 'true'
+        if: always() && env.TEM_PAGINA == 'true'
         continue-on-error: true
         run: |
           for f in vitrine.json garimpo.json; do if [ -f "$f" ]; then cp "$f" pagina/; fi; done
+          for d in perfis/*/; do
+            [ -d "$d" ] || continue
+            nome=$(basename "$d"); mkdir -p "pagina/$nome"
+            for f in vitrine.json garimpo.json; do if [ -f "$d$f" ]; then cp "$d$f" "pagina/$nome/"; fi; done
+          done
           cd pagina
           git config user.name "achadinhos-bot"
           git config user.email "bot@users.noreply.github.com"
