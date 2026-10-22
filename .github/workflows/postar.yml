@@ -81,7 +81,7 @@ jobs:
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_GERAL || secrets.GREEN_TOKEN }}
           GREEN_URL: ${{ secrets.GREEN_URL_GERAL || secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "3"
-          RADAR_MODO: "painel"
+          RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
           PALAVRAS: "fone bluetooth,smartwatch,air fryer,caixa de som bluetooth,carregador turbo,organizador casa,utensilios cozinha,garrafa termica,kit ferramentas,aspirador portatil,luminaria led,mochila,perfume,brinquedo infantil,suporte celular"
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao"
@@ -104,7 +104,7 @@ jobs:
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_BF || secrets.GREEN_TOKEN }}
           GREEN_URL: ${{ secrets.GREEN_URL_BF || secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "3"
-          RADAR_MODO: "painel"
+          RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
           DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais
           PALAVRAS: "smart tv,notebook,celular,fone bluetooth,smartwatch,air fryer,geladeira,maquina de lavar,ventilador,cafeteira,perfume importado,tenis,console,tablet,aspirador robo"
