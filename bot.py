@@ -78,6 +78,8 @@ VENDAS_MINIMAS = int(os.getenv("VENDAS_MINIMAS", "100"))
 DIAS_SEM_REPETIR = 7
 # Garimpo: só guarda achados com pelo menos esse desconto (0 = guarda tudo). Black Friday usa 40.
 DESCONTO_GARIMPO = int(os.getenv("DESCONTO_GARIMPO", "0"))
+# Modo "automatico": só posta sozinho achados do garimpo com até tantas horas (preço ainda fresco)
+AUTO_HORAS = float(os.getenv("AUTO_HORAS", "6"))
 
 SHOPEE_URL = "https://open-api.affiliate.shopee.com.br/graphql"
 BR = timezone(timedelta(hours=-3))
@@ -746,6 +748,44 @@ def atualizar_painel(historico: dict) -> int:
     return adicionados
 
 
+def ofertas_do_garimpo(historico: dict) -> list[dict]:
+    """Modo automático: achados do garimpo que já têm o link de vocês (Amazon do radar e Shopee)."""
+    limite = datetime.now(BR) - timedelta(hours=AUTO_HORAS)
+    aprovados = set(historico.get("_aprovados", []))
+    saida = []
+    for i in _ler_garimpo().get("itens", []):
+        if not i.get("converter") or i.get("gid") in aprovados or i.get("id") in historico:
+            continue
+        try:
+            if datetime.fromisoformat(i.get("achado_em") or i.get("quando")) < limite:
+                continue
+        except Exception:
+            continue
+        saida.append({
+            "id": i["id"], "gid": i["gid"], "loja": i["loja"], "nome": i["nome"],
+            "preco": float(i["preco"]), "preco_antes": float(i.get("preco_antes") or 0),
+            "desconto": int(i.get("desconto") or 0), "cupom": i.get("cupom", ""),
+            "imagem": i.get("imagem") or None, "link": i["link"],
+            "vendas": 0, "nota": 5, "comissao": 0, "radar": True,
+        })
+    return saida
+
+
+def marcar_postados_no_garimpo(gids: list[str], historico: dict) -> None:
+    """Mostra no painel (como aprovado) o que o modo automático já postou."""
+    if not gids:
+        return
+    aprovados = historico.get("_aprovados", [])
+    aprovados += [g for g in gids if g not in aprovados]
+    historico["_aprovados"] = aprovados[-500:]
+    dados = _ler_garimpo()
+    for i in dados.get("itens", []):
+        if i.get("gid") in gids:
+            i["aprovado"] = True
+    if dados.get("itens"):
+        GARIMPO.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 _PREFIXOS = {"ml": "https://meli.la/", "sp": "https://s.shopee.com.br/", "az": "https://amzn.to/"}
 
 
@@ -904,6 +944,19 @@ def main() -> None:
             ofertas += achadas
         except Exception as e:
             print(f"[aviso] radar falhou: {e}")
+    elif RADAR_MODO == "automatico":
+        # Atualiza o painel e posta sozinho o que já tem o link de vocês.
+        # O que precisa de link manual (Mercado Livre) continua no painel pra aprovar.
+        if not teste:
+            try:
+                n = atualizar_painel(historico)
+                print(f"[painel] {n} achado(s) novo(s) no painel do garimpo.")
+                salvar_historico(historico)
+            except Exception as e:
+                print(f"[aviso] painel falhou: {e}")
+        auto = ofertas_do_garimpo(historico)
+        print(f"[auto] {len(auto)} achado(s) do garimpo prontos pra postar sozinhos.")
+        ofertas += auto
     elif RADAR_MODO == "painel" and not teste:
         try:
             n = atualizar_painel(historico)
@@ -965,6 +1018,8 @@ def main() -> None:
         if whatsapp_ligado():
             time.sleep(random.randint(20, 45))   # intervalo humano entre posts no WhatsApp
         historico[o["id"]] = time.time()
+        if o.get("gid"):
+            marcar_postados_no_garimpo([o["gid"]], historico)
         registrar_vitrine(o)
         if o.get("manual"):
             marcar_manual_postada(o["link"])

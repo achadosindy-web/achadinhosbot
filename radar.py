@@ -232,9 +232,17 @@ def nome_produto(texto: str) -> str:
     return re.sub(r"\s+", " ", candidatas[0][2])[:90]
 
 
+_NAO_CUPOM = {"OFF", "FRETE", "GRATIS", "GRÁTIS", "HOJE", "AQUI", "AGORA", "APP", "SITE", "LINK", "LOJA", "PRIME", "DESCONTO"}
+
+
 def cupom(texto: str) -> str:
-    m = re.search(r"cupom\s*:?\s*([A-Z0-9]{4,20})\b", texto, re.I)
-    return m.group(1).upper() if m and not m.group(1).isdigit() else ""
+    """Código depois de 'cupom' ou 'código', escrito em MAIÚSCULAS no post (ex.: CASA20, BLACK50)."""
+    for m in re.finditer(r"(?i:cupom|c[oó]digo|\bc[oó]d\.?)(?i:\s+de\s+desconto)?\s*[:\-–]?\s*([A-Z0-9]{4,20})\b", texto):
+        cod = m.group(1)
+        if cod.isdigit() or cod in _NAO_CUPOM or not re.search(r"[A-Z]", cod):
+            continue
+        return cod
+    return ""
 
 
 # ----------------------------- Radar ------------------------------------------

@@ -103,3 +103,10 @@ Terceiro perfil, igual ao geral, mas o garimpo só guarda achados com **40% OFF 
 Segredos: `TELEGRAM_TOKEN_BF` (obrigatório, outro bot novo do @BotFather) e `WHATSAPP_GRUPO_BF`.
 Opcionais (se faltarem, usam os da Ingrid): `TELEGRAM_CANAL_BF`, `TELEGRAM_MEU_CHAT_BF`, `AMAZON_TAG_BF`,
 `GREEN_ID_BF`, `GREEN_TOKEN_BF`, `GREEN_URL_BF`. Para desligar depois da Black Friday, apague o segredo `TELEGRAM_TOKEN_BF`.
+
+## Modo automático (Geral e Black Friday)
+`RADAR_MODO: "automatico"`: a cada rodada atualiza o painel e posta sozinho, sem aprovação,
+os achados que já saem com o link de vocês (Amazon do radar com a AMAZON_TAG e Shopee da API),
+achados nas últimas `AUTO_HORAS` (6h), maiores descontos primeiro, sem repetir.
+O que precisa do seu link manual (Mercado Livre) continua no painel pra aprovar.
+O perfil da Ingrid continua em `"painel"` (só posta o que vocês aprovarem).
