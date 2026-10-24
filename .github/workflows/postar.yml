@@ -11,6 +11,12 @@
 name: Postar achadinhos
 
 on:
+  # Rodadas EXTRAS só do Black Friday (além das 5 do cron-job.org):
+  # 10h30, 13h30, 17h30, 20h30 e 22h30 de Brasília (o GitHub usa horário UTC, +3h).
+  # O GitHub às vezes atrasa alguns minutos essas rodadas; é normal.
+  schedule:
+    - cron: "30 13,16,20,23 * * *"
+    - cron: "30 1 * * *"
   workflow_dispatch:
     inputs:
       perfil:
@@ -35,7 +41,7 @@ jobs:
       TEM_GERAL: ${{ secrets.TELEGRAM_TOKEN_GERAL != '' }}
       TEM_BF: ${{ secrets.TELEGRAM_TOKEN_BF != '' }}
       LIGAR_GERAL: "nao"          # "sim" pra voltar a rodar o perfil geral
-      PERFIL_PEDIDO: ${{ inputs.perfil || 'todos' }}
+      PERFIL_PEDIDO: ${{ github.event_name == 'schedule' && 'blackfriday' || inputs.perfil || 'todos' }}
     steps:
       # Sempre pega a versão MAIS NOVA (com o histórico da rodada anterior),
       # mesmo se esta rodada ficou esperando na fila.
@@ -110,10 +116,11 @@ jobs:
           GREEN_ID: ${{ secrets.GREEN_ID_BF || secrets.GREEN_ID }}
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_BF || secrets.GREEN_TOKEN }}
           GREEN_URL: ${{ secrets.GREEN_URL_BF || secrets.GREEN_URL }}
-          OFERTAS_POR_RODADA: "3"
+          OFERTAS_POR_RODADA: "4"    # 10 rodadas por dia x 4 = até 40 ofertas/dia (se tiver achado bom)
           RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
           DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais (depois da Black Friday dá pra baixar pra 25)
+          CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao,guerradealsfit"
         run: python bot.py
