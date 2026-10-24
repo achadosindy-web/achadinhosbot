@@ -134,6 +134,36 @@ def resolver_amazon(url: str) -> str | None:
     return asin_de(url)
 
 
+CHECAR_AMAZON = os.getenv("AMAZON_CHECAR_DESCONTO", "").strip() in ("1", "sim", "true")
+_amazon_checadas = {"ok": 0, "bloqueada": 0, "sem_desconto": 0}
+
+
+def desconto_na_amazon(asin: str) -> tuple[float, float, int] | None:
+    """Abre a página do produto e lê preço e "-XX%" que a própria Amazon mostra.
+    Devolve (preço, preço antigo, desconto) ou None se não deu pra ler."""
+    try:
+        r = requests.get(f"https://www.amazon.com.br/dp/{asin}", headers=UA_NAV, timeout=20)
+    except Exception:
+        _amazon_checadas["bloqueada"] += 1
+        return None
+    h = r.text if r.ok else ""
+    if not h or "captcha" in h.lower()[:20000] or "api-services-support@amazon" in h:
+        _amazon_checadas["bloqueada"] += 1
+        return None
+    m_pct = re.search(r'savingsPercentage[^>]*>\s*-?\s*(\d{1,2})\s*%', h) or \
+            re.search(r'class="a-size-large a-color-price[^"]*"[^>]*>\s*-(\d{1,2})%', h)
+    m_preco = re.search(r'class="a-price-whole">([\d.]+)<', h)
+    m_cent = re.search(r'class="a-price-fraction">(\d{2})<', h)
+    if not (m_pct and m_preco):
+        _amazon_checadas["sem_desconto"] += 1
+        return None
+    preco = float(m_preco.group(1).replace(".", "") + "." + (m_cent.group(1) if m_cent else "00"))
+    pct = int(m_pct.group(1))
+    antes = round(preco / (1 - pct / 100), 2) if 0 < pct < 100 else 0
+    _amazon_checadas["ok"] += 1
+    return preco, antes, pct
+
+
 def loja_do_link(url: str) -> str:
     u = url.lower()
     if "amzn." in u or "amazon.com" in u:
@@ -218,11 +248,20 @@ def precos(texto: str) -> tuple[float, float]:
     return valores[0], 0.0
 
 
+# Linhas que são instrução ou propaganda de loja, não o nome do produto
+_NAO_E_NOME = (r"ative aqui|pesquise|loja oficial|no an[uú]ncio|localize|clique|toque|acesse|copie|cole |"
+               r"outras op[cç][oõ]es|selecione|programe e poupe|cancele quando|resgate|aplique|"
+               r"v[aá]lido|promo[cç][aã]o rel[aâ]mpago|corre que|acabou de baixar|baixou|menor pre[cç]o|"
+               r"hist[oó]rico|entre no grupo|siga|compartilhe|vendido por|entregue por|^⚠|^❗|^📌")
+
+
 def nome_produto(texto: str) -> str:
     candidatas = []
     for linha in texto.splitlines():
         l = linha.strip(" -•*🔥⚡️✅❌👉➡️💥🛒")
         if not l or "R$" in l or "http" in l or re.search(r"\bcupom\b|\blink\b|\bcompre\b|\bfrete\b", l, re.I):
+            continue
+        if re.search(_NAO_E_NOME, l, re.I):
             continue
         letras = sum(c.isalpha() for c in l)
         if letras < 8:
@@ -336,6 +375,10 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     repetidos += 1
                     continue
                 base.update(id=f"radar-{asin}", link=link_nosso(asin), converter=True)
+                if CHECAR_AMAZON and not base["desconto"] and _amazon_checadas["ok"] + _amazon_checadas["sem_desconto"] < 30:
+                    achado = desconto_na_amazon(asin)
+                    if achado:
+                        base.update(preco=achado[0], preco_antes=achado[1], desconto=achado[2])
             else:
                 chave = "garimpo-" + re.sub(r"\W+", "", base["nome"].lower())[:40]
                 if chave in ja_vistos or chave in vistos_aqui:
@@ -348,6 +391,8 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     print(f"[radar] resumo: {total} posts, {recentes} recentes (<{HORAS_MAX:g}h), "
           f"{fitness} no nicho ({nicho or 'fitness'}); por loja: {por_loja}; sem preço: {sem_preco}; "
           f"repetidos/já no painel: {repetidos}; aproveitáveis: {len(achadas)}")
+    if CHECAR_AMAZON:
+        print(f"[radar] desconto lido na página da Amazon: {_amazon_checadas}")
     for e in ex_sem_preco:
         print(f"[radar]   exemplo sem preço -> {e}")
     for e in ex_sem_link:

@@ -571,6 +571,8 @@ def interpretar(texto: str) -> tuple[dict | None, str]:
             nome = linha.replace(",", " ")[:90]
     if not precos:
         return None, "faltou o preço (ex: 49,90 / 89,90)"
+    if re.search(r"CODIGO-DO-PRODUTO|link-do-produto|SEU_LINK", url, re.I) or nome.lower() in ("nome do produto", "nome curto do produto"):
+        return None, "essa é a mensagem de exemplo; mande o link e o nome de um produto de verdade"
     loja = _loja(url)
     nome = nome or _nome_da_url(url) or "Achadinho do dia"
     if loja == "Amazon":
@@ -582,6 +584,8 @@ def interpretar(texto: str) -> tuple[dict | None, str]:
             except Exception:
                 pass
         url = link_amazon(url)
+        if not radar.asin_de(url):
+            return None, "esse link da Amazon não tem o código do produto (abra o produto e copie o link da página dele)"
     preco, antes = min(precos), (max(precos) if len(precos) > 1 else 0)
     return {"loja": loja, "produto": nome, "preco": f"{preco:.2f}",
             "preco_antes": f"{antes:.2f}" if antes > preco else "",
@@ -855,7 +859,7 @@ def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set
         aprovados.append(gid)
     historico["_aprovados"] = aprovados[-500:]
     _responder(chat, f"✅ Na fila pelo painel: {item['nome']} por {brl(float(item['preco']))} "
-                     f"({item['loja']}). Sai nesta rodada ou na próxima.")
+                     f"({item['loja']}). Já vai sair nesta rodada.")
     return 1
 
 
@@ -929,7 +933,7 @@ def ler_caixa_do_bot(historico: dict) -> int:
         if oferta["loja"] == "Amazon" and not AMAZON_TAG and "tag=" not in oferta["link"]:
             aviso = "\n⚠️ Falta configurar a tag da Amazon (AMAZON_TAG): esse link pode não render comissão."
         _responder(chat, f"✅ Na fila: {oferta['produto']} por {brl(float(oferta['preco']))} "
-                         f"({oferta['loja']}). Sai na próxima rodada ({_proximo_horario()}).{aviso}")
+                         f"({oferta['loja']}). Já vai sair nesta rodada.{aviso}")
     return novas
 
 
