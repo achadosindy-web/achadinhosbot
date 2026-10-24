@@ -259,7 +259,7 @@ def nome_produto(texto: str) -> str:
     candidatas = []
     for linha in texto.splitlines():
         l = linha.strip(" -•*🔥⚡️✅❌👉➡️💥🛒")
-        if not l or "R$" in l or "http" in l or re.search(r"\bcupom\b|\blink\b|\bcompre\b|\bfrete\b", l, re.I):
+        if not l or "R$" in l or "http" in l or re.search(r"\bcupo(m|ns)\b|\blink\b|\bcompre\b|\bfrete\b", l, re.I):
             continue
         if re.search(_NAO_E_NOME, l, re.I):
             continue
@@ -271,7 +271,9 @@ def nome_produto(texto: str) -> str:
     if not candidatas:
         return ""
     candidatas.sort()
-    return re.sub(r"\s+", " ", candidatas[0][2])[:90]
+    nome = re.sub(r"\s+", " ", candidatas[0][2])
+    nome = re.sub(r"^[^\wÀ-ÿ]+", "", nome)          # tira emoji/símbolo do começo (🛍️, 😍, 🚀...)
+    return nome[:90]
 
 
 _NAO_CUPOM = {"OFF", "FRETE", "GRATIS", "GRÁTIS", "HOJE", "AQUI", "AGORA", "APP", "SITE", "LINK", "LOJA", "PRIME", "DESCONTO"}
@@ -344,9 +346,12 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                 if len(ex_sem_preco) < 3:
                     ex_sem_preco.append(f"@{canal}: " + p["texto"].replace("\n", " / ")[:140])
                 continue
+            nome = nome_produto(p["texto"])
+            if not nome:
+                continue                      # post de cupom/aviso, sem produto
             base = {
                 "loja": loja,
-                "nome": nome_produto(p["texto"]) or "Achadinho fitness",
+                "nome": nome,
                 "preco": preco,
                 "preco_antes": antes,
                 "desconto": round((1 - preco / antes) * 100) if antes > preco else 0,
@@ -375,7 +380,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     repetidos += 1
                     continue
                 base.update(id=f"radar-{asin}", link=link_nosso(asin), converter=True)
-                if CHECAR_AMAZON and not base["desconto"] and _amazon_checadas["ok"] + _amazon_checadas["sem_desconto"] < 30:
+                if CHECAR_AMAZON and not base["desconto"] and _amazon_checadas["ok"] + _amazon_checadas["sem_desconto"] < 60:
                     achado = desconto_na_amazon(asin)
                     if achado:
                         base.update(preco=achado[0], preco_antes=achado[1], desconto=achado[2])
