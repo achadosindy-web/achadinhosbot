@@ -123,7 +123,8 @@ jobs:
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao,guerradealsfit"
+          # Canais novos pra Black Friday: Canaltech Ofertas (eletro), Nerd Ofertas, Jersu Indica, Descontos Top, Promos da Thaix, Promoções e Cupons Globais
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao,guerradealsfit,ctdescontomate,nerdofertas,cuponsjersu,descontos_top,promosdathaix,promocoesecuponsglobais"
         run: python bot.py
 
       - name: Guardar histórico (evita repetir oferta)
