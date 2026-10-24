@@ -2,11 +2,12 @@
 # Quem chama no horário certo é o cron-job.org (9h, 12h, 15h, 19h e 21h de Brasília).
 # Também dá pra rodar na mão: Actions > Postar achadinhos > Run workflow.
 #
-# Dois perfis no mesmo robô:
-#   ingrid -> grupo fitness da Ingrid (segredos de sempre, arquivos na raiz)
-#   geral  -> grupos de achadinhos em geral (segredos terminados em _GERAL, arquivos em perfis/geral/)
-#   blackfriday -> grupo de Black Friday, só descontos grandes (segredos _BF, arquivos em perfis/blackfriday/)
-# Cada perfil novo só roda depois que o segredo do bot dele existir (TELEGRAM_TOKEN_GERAL / TELEGRAM_TOKEN_BF).
+# Perfis no mesmo robô:
+#   ingrid      -> grupo Achadinhos da Indy (segredos de sempre, arquivos na raiz). Posta só o que vocês aprovam.
+#   blackfriday -> grupo Black Friday da Indy: SÓ produtos com 40% OFF ou mais, qualquer categoria.
+#                  Posta sozinho. Segredos _BF, arquivos em perfis/blackfriday/.
+#   geral       -> DESLIGADO por enquanto (o grupo que era "Achadinhos geral" virou o Black Friday).
+#                  Pra religar um dia: troque LIGAR_GERAL pra "sim" lá embaixo.
 name: Postar achadinhos
 
 on:
@@ -33,9 +34,14 @@ jobs:
       TEM_PAGINA: ${{ secrets.PAGINA_TOKEN != '' }}
       TEM_GERAL: ${{ secrets.TELEGRAM_TOKEN_GERAL != '' }}
       TEM_BF: ${{ secrets.TELEGRAM_TOKEN_BF != '' }}
+      LIGAR_GERAL: "nao"          # "sim" pra voltar a rodar o perfil geral
       PERFIL_PEDIDO: ${{ inputs.perfil || 'todos' }}
     steps:
+      # Sempre pega a versão MAIS NOVA (com o histórico da rodada anterior),
+      # mesmo se esta rodada ficou esperando na fila.
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -66,7 +72,7 @@ jobs:
       # Segredos próprios terminados em _GERAL. Os que não existirem usam os da Ingrid
       # (Shopee, Amazon, Green-API e seu chat do Telegram podem ser os mesmos).
       - name: Postar ofertas (Geral)
-        if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'geral') && env.TEM_GERAL == 'true'
+        if: env.LIGAR_GERAL == 'sim' && (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'geral') && env.TEM_GERAL == 'true'
         continue-on-error: true
         env:
           PERFIL: geral
@@ -83,11 +89,12 @@ jobs:
           OFERTAS_POR_RODADA: "3"
           RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
-          PALAVRAS: "fone bluetooth,smartwatch,air fryer,caixa de som bluetooth,carregador turbo,organizador casa,utensilios cozinha,garrafa termica,kit ferramentas,aspirador portatil,luminaria led,mochila,perfume,brinquedo infantil,suporte celular"
+          CATEGORIAS_FORA: "Eletrodomésticos,Eletrônicos"   # eletro vai pro grupo de eletro
+          PALAVRAS: "organizador casa,utensilios cozinha,garrafa termica,kit ferramentas,luminaria led,mochila,perfume,brinquedo infantil,toalha de banho,jogo de cama,pote hermetico,kit maquiagem,tapete sala,mala de viagem,suporte celular"
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao"
         run: python bot.py
 
-      # ---------------- Perfil Black Friday (só descontos grandes) ----------------
+      # ---------------- Perfil Black Friday: só produtos com 40% OFF ou mais ----------------
       - name: Postar ofertas (Black Friday)
         if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'blackfriday') && env.TEM_BF == 'true'
         continue-on-error: true
@@ -106,8 +113,8 @@ jobs:
           OFERTAS_POR_RODADA: "3"
           RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
-          DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais
-          PALAVRAS: "smart tv,notebook,celular,fone bluetooth,smartwatch,air fryer,geladeira,maquina de lavar,ventilador,cafeteira,perfume importado,tenis,console,tablet,aspirador robo"
+          DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais (depois da Black Friday dá pra baixar pra 25)
+          PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao,guerradealsfit"
         run: python bot.py
 
@@ -119,7 +126,14 @@ jobs:
           for f in historico.json ofertas.csv vitrine.json garimpo.json; do if [ -f "$f" ]; then git add "$f"; fi; done
           if [ -d perfis ]; then git add perfis; fi
           git diff --cached --quiet || git commit -m "histórico de postagens"
-          git push || true
+          # Tenta salvar até 5 vezes; se alguém mexeu no repositório nesse meio-tempo,
+          # junta as mudanças antes (o histórico desta rodada tem prioridade).
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X theirs origin main && git push origin HEAD:main && break
+            echo "não consegui salvar o histórico (tentativa $i), tentando de novo..."
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 5))
+          done
 
       # Atualiza a página e os painéis (repositório público "grupo").
       # Ingrid: raiz do site. Outros perfis: pasta com o nome do perfil (geral/, blackfriday/).
