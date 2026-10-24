@@ -71,7 +71,7 @@ jobs:
           GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
           RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadinhosdamanoella,modafemininaofertas,laniceachados,glowupestilofeminino,segredodoscosmeticos,belezaempromocao,skincareecapilar,topmaquiagemeflores,acheinashopee_casa,achadoscasaedecor,achadinhosdadri,mundocasaeachados,achadosfitnessbr,modafitnesselook,glowupfitnessbr,achadosshopebrasil,achadosimperdiveisbr,achadinhosdarachel,ofertasfemininas,detectordecupons,guerradealsfit"
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadoscasaedecor,achadosfitnessbr,achadosshopebrasil,guerradealsfit"
         run: python bot.py
 
       # ---------------- Perfil Geral (achadinhos em geral) ----------------
@@ -97,7 +97,7 @@ jobs:
           RADAR_NICHO: "tudo"
           CATEGORIAS_FORA: "Eletrodomésticos,Eletrônicos"   # eletro vai pro grupo de eletro
           PALAVRAS: "organizador casa,utensilios cozinha,garrafa termica,kit ferramentas,luminaria led,mochila,perfume,brinquedo infantil,toalha de banho,jogo de cama,pote hermetico,kit maquiagem,tapete sala,mala de viagem,suporte celular"
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao"
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor"
         run: python bot.py
 
       # ---------------- Perfil Black Friday: só produtos com 40% OFF ou mais ----------------
@@ -123,8 +123,8 @@ jobs:
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
-          # Canais novos pra Black Friday: Canaltech Ofertas (eletro), Nerd Ofertas, Jersu Indica, Descontos Top, Promos da Thaix, Promoções e Cupons Globais
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadosimperdiveisbr,detectordecupons,acheinashopee_casa,achadoscasaedecor,mundocasaeachados,achadinhosdadri,achadinhosdarachel,belezaempromocao,guerradealsfit,ctdescontomate,nerdofertas,cuponsjersu,descontos_top,promosdathaix,promocoesecuponsglobais"
+          # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10)
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor,guerradealsfit,nerdofertas,cuponsjersu,descontos_top,promocoesecuponsglobais"
         run: python bot.py
 
       - name: Guardar histórico (evita repetir oferta)
