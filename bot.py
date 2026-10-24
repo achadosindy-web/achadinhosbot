@@ -78,6 +78,10 @@ VENDAS_MINIMAS = int(os.getenv("VENDAS_MINIMAS", "100"))
 DIAS_SEM_REPETIR = 7
 # Garimpo: só guarda achados com pelo menos esse desconto (0 = guarda tudo). Black Friday usa 40.
 DESCONTO_GARIMPO = int(os.getenv("DESCONTO_GARIMPO", "0"))
+# Garimpo por categoria (nomes iguais aos do painel, separados por vírgula):
+#   CATEGORIAS_GARIMPO = só essas entram  |  CATEGORIAS_FORA = essas não entram
+CATEGORIAS_GARIMPO = {c.strip().lower() for c in os.getenv("CATEGORIAS_GARIMPO", "").split(",") if c.strip()}
+CATEGORIAS_FORA = {c.strip().lower() for c in os.getenv("CATEGORIAS_FORA", "").split(",") if c.strip()}
 # Modo "automatico": só posta sozinho achados do garimpo com até tantas horas (preço ainda fresco)
 AUTO_HORAS = float(os.getenv("AUTO_HORAS", "6"))
 
@@ -203,9 +207,9 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
     boas.sort(key=lambda o: (not o.get("manual"), not o.get("radar"), -pontuar(o)))
     vistos, final = set(), []
     for o in boas:
-        if o["id"] in vistos:
+        if o["id"] in vistos or chave_nome(o.get("nome", "")) in vistos:
             continue
-        vistos.add(o["id"])
+        vistos.update({o["id"], chave_nome(o.get("nome", ""))})
         final.append(o)
         if len(final) >= OFERTAS_POR_RODADA:
             break
@@ -720,6 +724,9 @@ def atualizar_painel(historico: dict) -> int:
             continue
         if DESCONTO_GARIMPO and (o.get("desconto") or 0) < DESCONTO_GARIMPO:
             continue
+        cat = (o.get("categoria") or "Outros").lower()
+        if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
+            continue
         adicionados += 1
         itens[gid] = {
             "gid": gid, "id": o["id"], "loja": o["loja"], "nome": o["nome"],
@@ -748,6 +755,10 @@ def atualizar_painel(historico: dict) -> int:
     return adicionados
 
 
+def chave_nome(nome: str) -> str:
+    return "nome-" + re.sub(r"\W+", "", (nome or "").lower())[:40]
+
+
 def ofertas_do_garimpo(historico: dict) -> list[dict]:
     """Modo automático: achados do garimpo que já têm o link de vocês (Amazon do radar e Shopee)."""
     limite = datetime.now(BR) - timedelta(hours=AUTO_HORAS)
@@ -756,6 +767,8 @@ def ofertas_do_garimpo(historico: dict) -> list[dict]:
     for i in _ler_garimpo().get("itens", []):
         if not i.get("converter") or i.get("gid") in aprovados or i.get("id") in historico:
             continue
+        if historico.get(chave_nome(i.get("nome")), 0) > time.time() - DIAS_SEM_REPETIR * 86400:
+            continue   # mesmo produto já foi postado com outro link
         try:
             if datetime.fromisoformat(i.get("achado_em") or i.get("quando")) < limite:
                 continue
@@ -1018,9 +1031,11 @@ def main() -> None:
         if whatsapp_ligado():
             time.sleep(random.randint(20, 45))   # intervalo humano entre posts no WhatsApp
         historico[o["id"]] = time.time()
+        historico[chave_nome(o["nome"])] = time.time()
         if o.get("gid"):
             marcar_postados_no_garimpo([o["gid"]], historico)
         registrar_vitrine(o)
+        salvar_historico(historico)   # salva na hora: se a rodada cair no meio, não repete o que já foi
         if o.get("manual"):
             marcar_manual_postada(o["link"])
         time.sleep(3)

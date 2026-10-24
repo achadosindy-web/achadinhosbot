@@ -29,7 +29,8 @@ _FORA = r"(whey|creatina|suplement|halter|anilha|esteira|bicicleta|smartwatch|re
 _CATEGORIAS = [
     ("Fitness", r"fitness|academia|treino|legging|esportiv|dry ?fit|compress[aã]o|yoga|pilates|corrida|whey|creatina|halter|top esportivo"),
     ("Beleza", r"perfume|maquiag|batom|base l[ií]quida|s[eé]rum|hidratante|shampoo|condicionador|creme|skin ?care|protetor solar|esmalte|secador|chapinha|escova alisadora|cabelo"),
-    ("Casa", r"cozinha|panela|frigideira|airfryer|air fryer|fritadeira|liquidificador|organizador|pote|toalha|len[cç]ol|travesseiro|edredom|cortina|tapete|aspirador|mop|vassoura|lumin[aá]ria|decora|copo|caneca|garrafa t[eé]rmica|cafeteira|chaleira|forno|micro-?ondas|geladeira|fog[aã]o|ventilador|limpeza|lava"),
+    ("Eletrodomésticos", r"air ?fryer|fritadeira|liquidificador|batedeira|mixer|processador de alimentos|multiprocessador|cafeteira|espresso|nespresso|dolce gusto|chaleira el[eé]trica|sanduicheira|grill|forno el[eé]trico|micro-?ondas|geladeira|refrigerador|freezer|frigobar|fog[aã]o|cooktop|coifa|depurador|lava[- ]?lou[cç]as|m[aá]quina de lavar|lavadora|lava e seca|secadora|tanquinho|aspirador|rob[oô] aspirador|ventilador|climatizador|ar[- ]condicionado|purificador|bebedouro|ferro de passar|vaporizador|panela el[eé]trica|panela de press[aã]o el[eé]trica|panela de arroz|torradeira|pipoqueira|iogurteira|adega"),
+    ("Casa", r"cozinha|panela|frigideira|organizador|pote|toalha|len[cç]ol|travesseiro|edredom|cortina|tapete|mop|vassoura|lumin[aá]ria|decora|copo|caneca|garrafa t[eé]rmica|chaleira|forno|limpeza|lava"),
     ("Moda", r"camiseta|camisa|vestido|cal[cç]a|bermuda|short|saia|blusa|jaqueta|moletom|t[eê]nis|sand[aá]lia|chinelo|bolsa|mochila|carteira|rel[oó]gio|[oó]culos|cueca|calcinha|suti[aã]|meia|bon[eé]"),
     ("Eletrônicos", r"fone|celular|smartphone|iphone|galaxy|xiaomi|notebook|tablet|\btv\b|smart ?tv|monitor|carregador|power ?bank|caixa de som|alexa|echo|kindle|ssd|mouse|teclado|headset|smartwatch|playstation|xbox|nintendo|game"),
 ]
@@ -185,7 +186,9 @@ def link_nosso(asin: str) -> str:
 
 
 # ----------------------------- Texto do post -----------------------------------
-_RS = r"R\s?\$\s*(\d+\.\d{2}(?![\d.,])|\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+# Preço depois de "R$". Aceita 59,90 | 59.90 | 3.675,66 | 3675,66 | 3675 (sem ponto de milhar).
+# O (?!\d) no fim garante que o número foi lido inteiro (antes, "3675,66" virava 367).
+_RS = r"R\s?\$\s*(\d+\.\d{2}(?![\d.,])|\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?(?!\d)|\d+(?:[.,]\d{1,2})?(?!\d))"
 
 
 def _num(t: str) -> float:
@@ -206,7 +209,7 @@ def precos(texto: str) -> tuple[float, float]:
     if not valores:
         # preço sem "R$": "Por 59,90", "Preço: 89,90", "💰 49,90"
         m = re.search(r"(?:\bpor\b|pre[cç]o|valor|apenas|\bs[oó]\b|💰|💵|🔥|➡️|👉)\s*:?\s*"
-                      r"(\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+,\d{2}|\d{2,4})(?![\d,.]*\s*(?:x\b|%|vezes|parcela))", t, re.I)
+                      r"(\d{1,3}(?:\.\d{3})+(?:,\d{2})?(?!\d)|\d+,\d{2}(?!\d)|\d{2,5}(?![\d.,]))(?![\d,.]*\s*(?:x\b|%|vezes|parcela))", t, re.I)
         if m:
             return _num(m.group(1)), 0.0
         return 0.0, 0.0

@@ -110,3 +110,16 @@ os achados que já saem com o link de vocês (Amazon do radar com a AMAZON_TAG e
 achados nas últimas `AUTO_HORAS` (6h), maiores descontos primeiro, sem repetir.
 O que precisa do seu link manual (Mercado Livre) continua no painel pra aprovar.
 O perfil da Ingrid continua em `"painel"` (só posta o que vocês aprovarem).
+
+## Grupo Eletro (antigo Black Friday)
+O perfil `blackfriday` agora é o grupo de **eletrodomésticos e eletrônicos com 40%+ OFF**
+(`CATEGORIAS_GARIMPO` e `DESCONTO_GARIMPO` no postar.yml). Os segredos continuam com _BF.
+O Geral não recebe eletro (`CATEGORIAS_FORA`), pra os dois grupos não repetirem produto.
+Depois da Black Friday dá pra baixar o `DESCONTO_GARIMPO` do Eletro pra 25.
+
+## Situação atual (24/10)
+- **ingrid** -> grupo Achadinhos da Indy, com aprovação pelo painel.
+- **blackfriday** -> grupo Black Friday da Indy (o grupo que era "Achadinhos geral"). Posta sozinho só
+  produtos com 40% OFF ou mais, de qualquer categoria. O segredo `WHATSAPP_GRUPO_BF` precisa ter o código
+  desse grupo.
+- **geral** -> desligado (`LIGAR_GERAL: "nao"` no postar.yml).
