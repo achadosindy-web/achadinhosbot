@@ -123,3 +123,9 @@ Depois da Black Friday dá pra baixar o `DESCONTO_GARIMPO` do Eletro pra 25.
   produtos com 40% OFF ou mais, de qualquer categoria. O segredo `WHATSAPP_GRUPO_BF` precisa ter o código
   desse grupo.
 - **geral** -> desligado (`LIGAR_GERAL: "nao"` no postar.yml).
+
+## Horários (24/10)
+- cron-job.org: 9h, 12h, 15h, 19h e 21h -> roda Indy + Black Friday.
+- GitHub (schedule no postar.yml): 10h30, 13h30, 17h30, 20h30 e 22h30 -> só Black Friday.
+- Black Friday: até 4 ofertas automáticas por rodada (40% OFF+), eletro primeiro.
+- "Enviar agora" no painel: roda na hora e posta TUDO o que vocês aprovaram (até 10 por vez).

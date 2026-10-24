@@ -65,6 +65,8 @@ RADAR_SUGESTOES = int(os.getenv("RADAR_SUGESTOES", "5"))     # sugestões por ro
 
 # Quantas ofertas por execucao e palavras-chave para garimpar
 OFERTAS_POR_RODADA = int(os.getenv("OFERTAS_POR_RODADA", "3"))
+# O que vocês aprovaram (painel/Telegram) sai TODO na mesma rodada, até esse limite de segurança
+MAX_APROVADAS = int(os.getenv("MAX_APROVADAS", "10"))
 PALAVRAS = [p.strip() for p in os.getenv(
     "PALAVRAS",
     "legging fitness,conjunto fitness feminino,top academia,short academia feminino,"
@@ -84,6 +86,8 @@ CATEGORIAS_GARIMPO = {c.strip().lower() for c in os.getenv("CATEGORIAS_GARIMPO",
 CATEGORIAS_FORA = {c.strip().lower() for c in os.getenv("CATEGORIAS_FORA", "").split(",") if c.strip()}
 # Modo "automatico": só posta sozinho achados do garimpo com até tantas horas (preço ainda fresco)
 AUTO_HORAS = float(os.getenv("AUTO_HORAS", "6"))
+# Categorias que saem primeiro quando há mais achados do que vagas na rodada (ex.: Black Friday)
+PRIORIDADE = [c.strip().lower() for c in os.getenv("CATEGORIAS_PRIORIDADE", "").split(",") if c.strip()]
 
 SHOPEE_URL = "https://open-api.affiliate.shopee.com.br/graphql"
 BR = timezone(timedelta(hours=-3))
@@ -185,8 +189,11 @@ def salvar_historico(h: dict) -> None:
 
 
 def pontuar(o: dict) -> float:
-    """Nota da oferta: desconto pesa mais, depois prova social e comissao."""
-    return (o["desconto"] * 2
+    """Nota da oferta: desconto pesa mais, depois prova social e comissao.
+    Categorias em CATEGORIAS_PRIORIDADE ganham bônus (a primeira da lista ganha mais)."""
+    cat = (o.get("categoria") or "").lower()
+    bonus = (len(PRIORIDADE) - PRIORIDADE.index(cat)) * 15 if cat in PRIORIDADE else 0
+    return (bonus + o["desconto"] * 2
             + min(o["vendas"], 5000) / 100
             + o["comissao"] * 100
             + (o["nota"] - 4) * 10)
@@ -205,14 +212,23 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
         boas.append(o)
     # manuais primeiro (voce escolheu a dedo), depois as melhores da Shopee
     boas.sort(key=lambda o: (not o.get("manual"), not o.get("radar"), -pontuar(o)))
+    # Aprovadas por vocês (manuais) saem todas, até MAX_APROVADAS;
+    # as automáticas (radar/Shopee) preenchem até OFERTAS_POR_RODADA.
     vistos, final = set(), []
+    n_manual = n_auto = 0
     for o in boas:
         if o["id"] in vistos or chave_nome(o.get("nome", "")) in vistos:
             continue
+        if o.get("manual"):
+            if n_manual >= MAX_APROVADAS:
+                continue
+            n_manual += 1
+        else:
+            if n_auto >= OFERTAS_POR_RODADA:
+                continue
+            n_auto += 1
         vistos.update({o["id"], chave_nome(o.get("nome", ""))})
         final.append(o)
-        if len(final) >= OFERTAS_POR_RODADA:
-            break
     return final
 
 
@@ -780,6 +796,7 @@ def ofertas_do_garimpo(historico: dict) -> list[dict]:
             "desconto": int(i.get("desconto") or 0), "cupom": i.get("cupom", ""),
             "imagem": i.get("imagem") or None, "link": i["link"],
             "vendas": 0, "nota": 5, "comissao": 0, "radar": True,
+            "categoria": i.get("categoria", "Outros"),
         })
     return saida
 
