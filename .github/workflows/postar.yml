@@ -24,6 +24,27 @@ on:
         type: choice
         options: [todos, ingrid, geral, blackfriday]
         default: todos
+      # Formulário "Postar algo que vi" do painel (vai pro grupo do perfil escolhido)
+      link:
+        description: "Link do produto (opcional)"
+        required: false
+        default: ""
+      nome:
+        description: "Nome do produto"
+        required: false
+        default: ""
+      preco:
+        description: "Preço atual (ex: 49,90)"
+        required: false
+        default: ""
+      preco_antes:
+        description: "Preço antigo (opcional)"
+        required: false
+        default: ""
+      cupom:
+        description: "Cupom (opcional)"
+        required: false
+        default: ""
 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
 concurrency:
@@ -59,6 +80,11 @@ jobs:
         continue-on-error: true
         env:
           PERFIL: ingrid
+          OFERTA_LINK: ${{ inputs.perfil == 'ingrid' && inputs.link || '' }}
+          OFERTA_NOME: ${{ inputs.perfil == 'ingrid' && inputs.nome || '' }}
+          OFERTA_PRECO: ${{ inputs.perfil == 'ingrid' && inputs.preco || '' }}
+          OFERTA_PRECO_ANTES: ${{ inputs.perfil == 'ingrid' && inputs.preco_antes || '' }}
+          OFERTA_CUPOM: ${{ inputs.perfil == 'ingrid' && inputs.cupom || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -106,6 +132,11 @@ jobs:
         continue-on-error: true
         env:
           PERFIL: blackfriday
+          OFERTA_LINK: ${{ inputs.perfil == 'blackfriday' && inputs.link || '' }}
+          OFERTA_NOME: ${{ inputs.perfil == 'blackfriday' && inputs.nome || '' }}
+          OFERTA_PRECO: ${{ inputs.perfil == 'blackfriday' && inputs.preco || '' }}
+          OFERTA_PRECO_ANTES: ${{ inputs.perfil == 'blackfriday' && inputs.preco_antes || '' }}
+          OFERTA_CUPOM: ${{ inputs.perfil == 'blackfriday' && inputs.cupom || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BF }}
