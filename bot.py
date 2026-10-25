@@ -27,6 +27,7 @@ from pathlib import Path
 import requests
 from html import unescape as html_unescape
 
+import cartao
 import radar
 
 PASTA = Path(__file__).parent
@@ -55,6 +56,8 @@ ZAPI_TOKEN = os.getenv("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "").strip()
 WHATSAPP_GRUPO = os.getenv("WHATSAPP_GRUPO", "").strip()           # ex: 120363...-group (pode ser lista: a,b,c)
 GRUPOS_WHATSAPP = [g.strip() for g in WHATSAPP_GRUPO.split(",") if g.strip()]
+# Cartão com a marca do grupo (foto + preço + logo). "nao" volta a mandar só a foto.
+CARTAO = os.getenv("CARTAO", "sim").strip().lower() not in ("nao", "não", "0", "false")
 # Alternativa grátis: Green-API (plano Developer, até 3 conversas: basta pro grupo)
 GREEN_ID = os.getenv("GREEN_ID", "").strip()
 GREEN_TOKEN = os.getenv("GREEN_TOKEN", "").strip()
@@ -265,8 +268,12 @@ def montar_mensagem(o: dict) -> str:
 def telegram(chat: str, texto: str, imagem: str | None) -> None:
     base = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
     if imagem and len(texto) <= 1000:
-        r = requests.post(f"{base}/sendPhoto", timeout=30,
-                          data={"chat_id": chat, "photo": imagem, "caption": texto})
+        if isinstance(imagem, bytes):
+            r = requests.post(f"{base}/sendPhoto", timeout=60, data={"chat_id": chat, "caption": texto},
+                              files={"photo": ("oferta.jpg", imagem, "image/jpeg")})
+        else:
+            r = requests.post(f"{base}/sendPhoto", timeout=30,
+                              data={"chat_id": chat, "photo": imagem, "caption": texto})
         if r.ok:
             return
     dados = {"chat_id": chat, "text": texto}
@@ -310,6 +317,9 @@ def _imagem_para_whatsapp(imagem: str | None) -> str | None:
     """URL pública vai direto; foto mandada no Telegram (file_id) vira base64."""
     if not imagem:
         return None
+    if isinstance(imagem, bytes):
+        import base64
+        return "data:image/jpeg;base64," + base64.b64encode(imagem).decode()
     if imagem.startswith("http"):
         return imagem
     try:
@@ -347,9 +357,11 @@ def _grupo_green(g: str) -> str:
     return g.replace("-group", "@g.us") if g.endswith("-group") else g
 
 
-def _imagem_bytes(imagem: str | None) -> bytes | None:
+def _imagem_bytes(imagem) -> bytes | None:
     if not imagem:
         return None
+    if isinstance(imagem, bytes):
+        return imagem
     try:
         if imagem.startswith("http"):
             r = requests.get(imagem, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
@@ -420,6 +432,21 @@ def _foto_amazon(link: str) -> str | None:
         except Exception:
             continue
     return None
+
+
+def foto_do_produto(o: dict):
+    """Foto oficial do produto, nunca a arte de outro canal (que vem com o logo deles).
+    Amazon: foto oficial pelo código do produto. Outras lojas: foto da página do produto.
+    Foto que veio de canal do Telegram só é usada se não houver outra."""
+    atual = o.get("imagem")
+    do_canal = isinstance(atual, str) and ("telesco.pe" in atual or "telegram" in atual)
+    if "amazon." in o["link"] or "amzn." in o["link"]:
+        oficial = _foto_amazon(o["link"])
+        if oficial:
+            return oficial
+    if not atual or do_canal:
+        return imagem_do_link(o["link"]) or atual
+    return atual
 
 
 def imagem_do_link(link: str) -> str | None:
@@ -1022,21 +1049,29 @@ def main() -> None:
         return
 
     for o in escolhidas:
-        if not o.get("imagem") and not teste:
-            o["imagem"] = imagem_do_link(o["link"])
+        if not teste:
+            o["imagem"] = foto_do_produto(o)
         msg = montar_mensagem(o)
         print("=" * 50 + "\n" + msg + "\n")
         if teste:
             continue
+        envio = o["imagem"]
+        if CARTAO:
+            try:
+                card = cartao.gerar(o, _imagem_bytes(o["imagem"]), PERFIL or "ingrid")
+                if card:
+                    envio = card
+            except Exception as e:
+                print(f"[aviso] não consegui montar o cartão: {e}")
         for canal in CANAIS_TELEGRAM:
             try:
-                telegram(canal, msg, o["imagem"])
+                telegram(canal, msg, envio)
             except Exception as e:
                 print(f"[aviso] não consegui postar no canal {canal}: {e}")
         postou_zap = 0
         if whatsapp_ligado():
             try:
-                postou_zap = whatsapp(msg, o["imagem"])
+                postou_zap = whatsapp(msg, envio)
             except Exception as e:
                 print(f"[aviso] WhatsApp automático falhou: {e}")
         parcial = (f" (em {postou_zap} de {len(GRUPOS_WHATSAPP)} grupos)"

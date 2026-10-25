@@ -129,3 +129,10 @@ Depois da Black Friday dá pra baixar o `DESCONTO_GARIMPO` do Eletro pra 25.
 - GitHub (schedule no postar.yml): 10h30, 13h30, 17h30, 20h30 e 22h30 -> só Black Friday.
 - Black Friday: até 4 ofertas automáticas por rodada (40% OFF+), eletro primeiro.
 - "Enviar agora" no painel: roda na hora e posta TUDO o que vocês aprovaram (até 10 por vez).
+
+## Cartão da oferta (25/10)
+Cada oferta vai pro grupo como um cartão 1080x1080 com a marca do grupo: foto oficial do produto,
+selo de desconto, loja, nome, "De/Por" e o logo no rodapé (Indy: bege/café; Black Friday: preto/amarelo).
+A foto nunca é a arte de outro canal (que vem com o logo deles): Amazon usa a foto oficial,
+as outras lojas a foto da página do produto. Arquivos: cartao.py, fontes Inter*.otf e logo-*.png.
+Pra desligar: CARTAO: "nao" no postar.yml.
