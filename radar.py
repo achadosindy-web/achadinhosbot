@@ -341,7 +341,9 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     ex_sem_link.append(f"@{canal}: {l0[:70]} => {_cache_seguir.get(l0, '(não seguido)')[:90]}")
                 continue
             preco, antes = precos(p["texto"])
-            if not preco:
+            if not preco and loja == "Amazon" and CHECAR_AMAZON:
+                pass                          # sem preço no post: o preço vem da página da Amazon
+            elif not preco:
                 sem_preco += 1
                 if len(ex_sem_preco) < 3:
                     ex_sem_preco.append(f"@{canal}: " + p["texto"].replace("\n", " / ")[:140])
@@ -384,6 +386,9 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     achado = desconto_na_amazon(asin)
                     if achado:
                         base.update(preco=achado[0], preco_antes=achado[1], desconto=achado[2])
+                if not base["preco"]:
+                    sem_preco += 1            # nem o post nem a página da Amazon deram o preço
+                    continue
             else:
                 chave = "garimpo-" + re.sub(r"\W+", "", base["nome"].lower())[:40]
                 if chave in ja_vistos or chave in vistos_aqui:
