@@ -164,6 +164,21 @@ def desconto_na_amazon(asin: str) -> tuple[float, float, int] | None:
     return preco, antes, pct
 
 
+def imagens_na_amazon(asin: str) -> list[str]:
+    """Fotos do produto lidas na própria página da Amazon (a grande primeiro)."""
+    try:
+        r = requests.get(f"https://www.amazon.com.br/dp/{asin}", headers=UA_NAV, timeout=20)
+        h = r.text if r.ok else ""
+    except Exception:
+        return []
+    achadas = re.findall(r'"hiRes":"(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
+    achadas += re.findall(r'data-old-hires="(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
+    achadas += re.findall(r'"large":"(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
+    achadas += re.findall(r'id="landingImage"[^>]+src="(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
+    achadas += re.findall(r'<meta[^>]+property="og:image"[^>]+content="(https://[^"]+)"', h)
+    return list(dict.fromkeys(achadas))[:4]
+
+
 def loja_do_link(url: str) -> str:
     u = url.lower()
     if "amzn." in u or "amazon.com" in u:

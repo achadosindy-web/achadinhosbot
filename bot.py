@@ -434,6 +434,47 @@ def _foto_amazon(link: str) -> str | None:
     return None
 
 
+def _foto_valida(b: bytes | None) -> bool:
+    """Descarta imagem vazia, pixel de 1x1 ou tudo de uma cor só."""
+    if not b or len(b) < 1500:
+        return False
+    try:
+        from PIL import Image, ImageStat
+        import io
+        im = Image.open(io.BytesIO(b)).convert("RGB")
+        if im.width < 150 or im.height < 150:
+            return False
+        return max(ImageStat.Stat(im.resize((64, 64))).stddev) > 8
+    except ImportError:
+        return True
+    except Exception:
+        return False
+
+
+def foto_boa(o: dict) -> tuple[str | None, bytes | None]:
+    """Procura uma foto de verdade do produto, conferindo cada uma.
+    Ordem: foto oficial da Amazon -> fotos da página da Amazon -> foto da página do produto
+    -> foto que veio do canal (último recurso)."""
+    candidatas = []
+    asin = radar.asin_de(o["link"])
+    if asin:
+        candidatas += [f"https://m.media-amazon.com/images/P/{asin}.01._SCLZZZZZZZ_.jpg",
+                       f"https://images-na.ssl-images-amazon.com/images/P/{asin}.01._SCLZZZZZZZ_.jpg"]
+        candidatas += radar.imagens_na_amazon(asin)
+    elif not ("amazon." in o["link"] or "amzn." in o["link"]):
+        og = imagem_do_link(o["link"])
+        if og:
+            candidatas.append(og)
+    if o.get("imagem"):
+        candidatas.append(o["imagem"])
+    for c in candidatas:
+        b = _imagem_bytes(c)
+        if _foto_valida(b):
+            return c, b
+    print(f"[aviso] não achei foto boa para: {o['nome'][:50]}")
+    return o.get("imagem"), None
+
+
 def foto_do_produto(o: dict):
     """Foto oficial do produto, nunca a arte de outro canal (que vem com o logo deles).
     Amazon: foto oficial pelo código do produto. Outras lojas: foto da página do produto.
@@ -1079,8 +1120,9 @@ def main() -> None:
         return
 
     for o in escolhidas:
+        foto_bytes = None
         if not teste:
-            o["imagem"] = foto_do_produto(o)
+            o["imagem"], foto_bytes = foto_boa(o)
         msg = montar_mensagem(o)
         print("=" * 50 + "\n" + msg + "\n")
         if teste:
@@ -1088,7 +1130,7 @@ def main() -> None:
         envio = o["imagem"]
         if CARTAO:
             try:
-                card = cartao.gerar(o, _imagem_bytes(o["imagem"]), PERFIL or "ingrid")
+                card = cartao.gerar(o, foto_bytes, PERFIL or "ingrid")
                 if card:
                     envio = card
             except Exception as e:
