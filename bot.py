@@ -649,6 +649,32 @@ def _por_na_fila(oferta: dict, existentes: set) -> bool:
     return True
 
 
+def oferta_do_formulario() -> int:
+    """Oferta preenchida no formulário "Postar algo que vi" do painel (chega pelo GitHub)."""
+    link = os.getenv("OFERTA_LINK", "").strip()
+    if not link:
+        return 0
+    nome = os.getenv("OFERTA_NOME", "").strip()
+    preco = os.getenv("OFERTA_PRECO", "").strip()
+    antes = os.getenv("OFERTA_PRECO_ANTES", "").strip()
+    cupom_txt = os.getenv("OFERTA_CUPOM", "").strip()
+    texto = f"{link}\n{nome}\n{preco}" + (f" / {antes}" if antes else "") + (f"\ncupom: {cupom_txt}" if cupom_txt else "")
+    oferta, problema = interpretar(texto)
+    if not oferta:
+        print(f"[formulário] não deu pra postar: {problema}")
+        for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+            _responder(chat, f"⚠️ A oferta do painel não saiu: {problema}.")
+        return 0
+    existentes = set()
+    if OFERTAS_MANUAIS.exists():
+        existentes = {l.get("link", "").strip() for l in csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8"))}
+    if not _por_na_fila(oferta, existentes):
+        print("[formulário] essa oferta já estava na fila.")
+        return 0
+    print(f"[formulário] na fila: {oferta['produto']} ({oferta['loja']})")
+    return 1
+
+
 def _radar_para_fila(o: dict) -> dict:
     return {"loja": o["loja"], "produto": o["nome"], "preco": f"{o['preco']:.2f}",
             "preco_antes": f"{o['preco_antes']:.2f}" if o.get("preco_antes") else "",
@@ -996,6 +1022,10 @@ def main() -> None:
         except Exception as e:
             print(f"[aviso] não consegui ler as mensagens do bot: {e}")
         salvar_historico(historico)
+        try:
+            oferta_do_formulario()
+        except Exception as e:
+            print(f"[aviso] formulário do painel: {e}")
     ofertas = ler_manuais()
 
     if RADAR_MODO == "auto":
