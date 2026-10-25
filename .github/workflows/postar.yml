@@ -123,8 +123,10 @@ jobs:
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
-          # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10)
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor,guerradealsfit,nerdofertas,cuponsjersu,descontos_top,promocoesecuponsglobais"
+          # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10).
+          # Eletro/casa: gtOFERTAS, promo_imperdivel, vrlofertas, ctofertaseletroetv (CT Ofertas Eletro e TV),
+          # ofertas_harpyja (eletroportáteis Amazon), escolhasegura, cacadoresofertas
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor,guerradealsfit,nerdofertas,cuponsjersu,descontos_top,promocoesecuponsglobais,gtOFERTAS,promo_imperdivel,vrlofertas,ctofertaseletroetv,ofertas_harpyja,escolhasegura,cacadoresofertas"
         run: python bot.py
 
       - name: Guardar histórico (evita repetir oferta)
