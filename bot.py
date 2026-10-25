@@ -832,6 +832,7 @@ def atualizar_painel(historico: dict) -> int:
             print(f"[painel] Shopee '{palavra}': {len(achados)} produto(s)")
     agora = datetime.now(BR)
     adicionados = 0
+    fotos_buscadas = 0
     for o in novos:
         gid = _gid(o["id"])
         if gid in itens:
@@ -842,6 +843,12 @@ def atualizar_painel(historico: dict) -> int:
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             continue
         adicionados += 1
+        if not o.get("imagem") and fotos_buscadas < 25:
+            fotos_buscadas += 1                 # post do canal sem foto: busca a foto do produto
+            try:
+                o["imagem"], _ = foto_boa(o)
+            except Exception:
+                pass
         itens[gid] = {
             "gid": gid, "id": o["id"], "loja": o["loja"], "nome": o["nome"],
             "preco": o["preco"], "preco_antes": o.get("preco_antes") or 0,

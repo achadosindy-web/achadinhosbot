@@ -150,6 +150,9 @@ def desconto_na_amazon(asin: str) -> tuple[float, float, int] | None:
     if not h or "captcha" in h.lower()[:20000] or "api-services-support@amazon" in h:
         _amazon_checadas["bloqueada"] += 1
         return None
+    fotos = _fotos_da_pagina(h)
+    if fotos:
+        _foto_lida[asin] = fotos[0]
     m_pct = re.search(r'savingsPercentage[^>]*>\s*-?\s*(\d{1,2})\s*%', h) or \
             re.search(r'class="a-size-large a-color-price[^"]*"[^>]*>\s*-(\d{1,2})%', h)
     m_preco = re.search(r'class="a-price-whole">([\d.]+)<', h)
@@ -164,19 +167,28 @@ def desconto_na_amazon(asin: str) -> tuple[float, float, int] | None:
     return preco, antes, pct
 
 
-def imagens_na_amazon(asin: str) -> list[str]:
-    """Fotos do produto lidas na própria página da Amazon (a grande primeiro)."""
-    try:
-        r = requests.get(f"https://www.amazon.com.br/dp/{asin}", headers=UA_NAV, timeout=20)
-        h = r.text if r.ok else ""
-    except Exception:
-        return []
+_foto_lida: dict[str, str] = {}      # asin -> foto achada na página (reaproveita a visita do desconto)
+
+
+def _fotos_da_pagina(h: str) -> list[str]:
     achadas = re.findall(r'"hiRes":"(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
     achadas += re.findall(r'data-old-hires="(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
     achadas += re.findall(r'"large":"(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
     achadas += re.findall(r'id="landingImage"[^>]+src="(https://m\.media-amazon\.com/images/I/[^"]+)"', h)
     achadas += re.findall(r'<meta[^>]+property="og:image"[^>]+content="(https://[^"]+)"', h)
     return list(dict.fromkeys(achadas))[:4]
+
+
+def imagens_na_amazon(asin: str) -> list[str]:
+    """Fotos do produto lidas na própria página da Amazon (a grande primeiro)."""
+    if asin in _foto_lida:
+        return [_foto_lida[asin]]
+    try:
+        r = requests.get(f"https://www.amazon.com.br/dp/{asin}", headers=UA_NAV, timeout=20)
+        h = r.text if r.ok else ""
+    except Exception:
+        return []
+    return _fotos_da_pagina(h)
 
 
 def loja_do_link(url: str) -> str:
@@ -404,6 +416,8 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                 if not base["preco"]:
                     sem_preco += 1            # nem o post nem a página da Amazon deram o preço
                     continue
+                if asin in _foto_lida:
+                    base["imagem"] = _foto_lida[asin]   # foto oficial, sem logo de outro canal
             else:
                 chave = "garimpo-" + re.sub(r"\W+", "", base["nome"].lower())[:40]
                 if chave in ja_vistos or chave in vistos_aqui:
