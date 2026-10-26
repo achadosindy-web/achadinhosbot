@@ -150,7 +150,7 @@ jobs:
           OFERTAS_POR_RODADA: "4"    # 10 rodadas por dia x 4 = até 40 ofertas/dia (se tiver achado bom)
           RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
-          DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais (depois da Black Friday dá pra baixar pra 25)
+          DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (Yuri ajustou em 25/10)
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
