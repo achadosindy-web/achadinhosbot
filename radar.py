@@ -27,6 +27,7 @@ _FORA = r"(whey|creatina|suplement|halter|anilha|esteira|bicicleta|smartwatch|re
 
 
 _CATEGORIAS = [
+    ("Bebê", r"fralda|len[cç]o umedecido|mamadeira|chupeta|carrinho de beb|beb[eê] conforto|ber[cç]o|body infantil|pomada para assadura"),
     ("Fitness", r"fitness|academia|treino|legging|esportiv|dry ?fit|compress[aã]o|yoga|pilates|corrida|whey|creatina|halter|top esportivo"),
     ("Beleza", r"perfume|maquiag|batom|base l[ií]quida|s[eé]rum|hidratante|shampoo|condicionador|creme|skin ?care|protetor solar|esmalte|secador|chapinha|escova alisadora|cabelo"),
     ("Eletrodomésticos", r"air ?fryer|fritadeira|liquidificador|batedeira|mixer|processador de alimentos|multiprocessador|cafeteira|espresso|nespresso|dolce gusto|chaleira el[eé]trica|sanduicheira|grill|forno el[eé]trico|micro-?ondas|geladeira|refrigerador|freezer|frigobar|fog[aã]o|cooktop|coifa|depurador|lava[- ]?lou[cç]as|m[aá]quina de lavar|lavadora|lava e seca|secadora|tanquinho|aspirador|rob[oô] aspirador|ventilador|climatizador|ar[- ]condicionado|purificador|bebedouro|ferro de passar|vaporizador|panela el[eé]trica|panela de press[aã]o el[eé]trica|panela de arroz|torradeira|pipoqueira|iogurteira|adega"),

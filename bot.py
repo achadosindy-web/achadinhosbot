@@ -90,6 +90,10 @@ CATEGORIAS_FORA = {c.strip().lower() for c in os.getenv("CATEGORIAS_FORA", "").s
 # Modo "automatico": só posta sozinho achados do garimpo com até tantas horas (preço ainda fresco)
 AUTO_HORAS = float(os.getenv("AUTO_HORAS", "6"))
 # Categorias que saem primeiro quando há mais achados do que vagas na rodada (ex.: Black Friday)
+# Variedade: o mesmo tipo de produto (ex.: fralda) só volta depois de tantas horas,
+# e no máximo tantas ofertas da mesma categoria numa rodada
+HORAS_MESMO_TIPO = float(os.getenv("HORAS_MESMO_TIPO", "12"))
+MAX_POR_CATEGORIA = int(os.getenv("MAX_POR_CATEGORIA", "2"))
 PRIORIDADE = [c.strip().lower() for c in os.getenv("CATEGORIAS_PRIORIDADE", "").split(",") if c.strip()]
 
 SHOPEE_URL = "https://open-api.affiliate.shopee.com.br/graphql"
@@ -217,8 +221,12 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
     boas.sort(key=lambda o: (not o.get("manual"), not o.get("radar"), -pontuar(o)))
     # Aprovadas por vocês (manuais) saem todas, até MAX_APROVADAS;
     # as automáticas (radar/Shopee) preenchem até OFERTAS_POR_RODADA.
+    # Variedade nas automáticas: 1 por tipo de produto na rodada, o mesmo tipo só volta
+    # depois de HORAS_MESMO_TIPO, e no máximo MAX_POR_CATEGORIA da mesma categoria por rodada.
     vistos, final = set(), []
     n_manual = n_auto = 0
+    tipos_rodada, cats_rodada = set(), {}
+    corte_tipo = time.time() - HORAS_MESMO_TIPO * 3600
     for o in boas:
         if o["id"] in vistos or chave_nome(o.get("nome", "")) in vistos:
             continue
@@ -229,6 +237,15 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
         else:
             if n_auto >= OFERTAS_POR_RODADA:
                 continue
+            tipo = chave_tipo(o.get("nome", ""))
+            cat = (o.get("categoria") or "Outros").lower()
+            if tipo and (tipo in tipos_rodada or historico.get(tipo, 0) > corte_tipo):
+                continue
+            if cats_rodada.get(cat, 0) >= MAX_POR_CATEGORIA:
+                continue
+            if tipo:
+                tipos_rodada.add(tipo)
+            cats_rodada[cat] = cats_rodada.get(cat, 0) + 1
             n_auto += 1
         vistos.update({o["id"], chave_nome(o.get("nome", ""))})
         final.append(o)
@@ -619,6 +636,46 @@ def _nome_da_url(url: str) -> str:
     return m.group(1).replace("-", " ").strip()[:80].capitalize() if m else ""
 
 
+_UA_PREVIA = {"User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+              "Accept-Language": "pt-BR,pt;q=0.9"}
+
+
+def dados_da_pagina(url: str) -> dict:
+    """Nome, foto e preço que a loja mostra na prévia do link (o mesmo que o WhatsApp usa).
+    Serve pra quando vocês mandam só o link (ex.: Shopee copiado do app)."""
+    try:
+        r = requests.get(url, headers=_UA_PREVIA, timeout=20, allow_redirects=True)
+        h = r.text or ""
+    except Exception as e:
+        print(f"[aviso] não consegui abrir o link pra ler os dados: {e}")
+        return {}
+    def meta(*nomes):
+        for n in nomes:
+            m = (re.search(rf'<meta[^>]+(?:property|name|itemprop)=["\']{n}["\'][^>]+content=["\']([^"\']+)', h, re.I) or
+                 re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name|itemprop)=["\']{n}["\']', h, re.I))
+            if m:
+                return html_unescape(m.group(1)).strip()
+        return ""
+    titulo = meta("og:title", "twitter:title")
+    if not titulo:
+        m = re.search(r"<title[^>]*>([^<]+)</title>", h, re.I)
+        titulo = html_unescape(m.group(1)).strip() if m else ""
+    titulo = re.sub(r"\s*[|\-–]\s*(Shopee Brasil|Shopee|Mercado Livre|MercadoLivre|Magalu|Amazon\.com\.br).*$", "", titulo, flags=re.I)
+    titulo = re.sub(r"^Amazon\.com\.br\s*:\s*", "", titulo, flags=re.I)
+    preco = 0.0
+    bruto = meta("product:price:amount", "og:price:amount", "price")
+    if bruto:
+        try:
+            preco = float(bruto.replace(".", "").replace(",", ".")) if "," in bruto else float(bruto)
+        except ValueError:
+            preco = 0.0
+    antes = 0.0
+    if not preco:
+        p_agora, p_antes = radar.precos(meta("og:description", "description"))
+        preco, antes = p_agora, p_antes
+    return {"nome": titulo[:90], "imagem": meta("og:image", "twitter:image"), "preco": preco, "preco_antes": antes}
+
+
 def interpretar(texto: str) -> tuple[dict | None, str]:
     """Transforma a mensagem numa oferta. Devolve (oferta, problema)."""
     urls = re.findall(r"https?://\S+", texto)
@@ -638,7 +695,24 @@ def interpretar(texto: str) -> tuple[dict | None, str]:
         if not nome:
             nome = linha.replace(",", " ")[:90]
     if not precos:
-        return None, "faltou o preço (ex: 49,90 / 89,90)"
+        # Post copiado de outro grupo/canal: usa o leitor do radar (emojis, "De R$ ... por R$ ...")
+        p_agora, p_antes = radar.precos(texto)
+        if p_agora:
+            precos = [p_agora] + ([p_antes] if p_antes else [])
+            nome = radar.nome_produto(resto) or nome
+            if not cupom:
+                cupom = radar.cupom(texto)
+    pagina = {}
+    if not precos or not nome:
+        # Mandou só o link (ou link + preço): busca nome, foto e preço na própria loja
+        pagina = dados_da_pagina(url)
+        if not precos and pagina.get("preco"):
+            precos = [pagina["preco"]] + ([pagina["preco_antes"]] if pagina.get("preco_antes") else [])
+        if not nome and pagina.get("nome"):
+            nome = pagina["nome"]
+    if not precos:
+        return None, ("não consegui ver o preço na loja. Manda de novo assim:\n" + url + "\n23,80"
+                      if pagina.get("nome") else "faltou o preço (ex: 49,90 / 89,90)")
     if re.search(r"CODIGO-DO-PRODUTO|link-do-produto|SEU_LINK", url, re.I) or nome.lower() in ("nome do produto", "nome curto do produto"):
         return None, "essa é a mensagem de exemplo; mande o link e o nome de um produto de verdade"
     loja = _loja(url)
@@ -657,7 +731,7 @@ def interpretar(texto: str) -> tuple[dict | None, str]:
     preco, antes = min(precos), (max(precos) if len(precos) > 1 else 0)
     return {"loja": loja, "produto": nome, "preco": f"{preco:.2f}",
             "preco_antes": f"{antes:.2f}" if antes > preco else "",
-            "cupom": cupom, "link": url, "imagem": "", "postado": ""}, ""
+            "cupom": cupom, "link": url, "imagem": pagina.get("imagem", ""), "postado": ""}, ""
 
 
 def _proximo_horario() -> str:
@@ -880,6 +954,24 @@ def chave_nome(nome: str) -> str:
     return "nome-" + re.sub(r"\W+", "", (nome or "").lower())[:40]
 
 
+_PALAVRAS_VAZIAS = {"kit", "jogo", "conjunto", "combo", "pack", "pacote", "caixa", "cx", "par", "pares",
+                    "novo", "nova", "super", "mega", "mini", "oferta", "promo", "original", "de", "da", "do",
+                    "com", "para", "e", "o", "a", "un", "und", "unidades", "unidade"}
+
+def chave_tipo(nome: str) -> str:
+    """O tipo do produto (a primeira palavra que diz o que é): 'Fralda Pom Pom XG' e
+    'Fralda Huggies P' viram 'tipo-fralda'; 'Kit 2 Travesseiros' vira 'tipo-travesseiro'."""
+    for p in re.findall(r"[a-zà-ú]+", (nome or "").lower()):
+        if len(p) < 3 or p in _PALAVRAS_VAZIAS:
+            continue
+        if p.endswith("es") and len(p) > 5 and p[-3] in "rsz":
+            p = p[:-2]
+        elif p.endswith("s") and len(p) > 4:
+            p = p[:-1]
+        return "tipo-" + p
+    return ""
+
+
 def ofertas_do_garimpo(historico: dict) -> list[dict]:
     """Modo automático: achados do garimpo que já têm o link de vocês (Amazon do radar e Shopee)."""
     limite = datetime.now(BR) - timedelta(hours=AUTO_HORAS)
@@ -1033,6 +1125,9 @@ def ler_caixa_do_bot(historico: dict) -> int:
         aviso = ""
         if oferta["loja"] == "Amazon" and not AMAZON_TAG and "tag=" not in oferta["link"]:
             aviso = "\n⚠️ Falta configurar a tag da Amazon (AMAZON_TAG): esse link pode não render comissão."
+        elif oferta["loja"] in ("Shopee", "Mercado Livre"):
+            aviso = ("\n⚠️ Confere se esse link é o SEU. Se você copiou de outro grupo, "
+                     "troca pelo seu link de afiliado, senão a comissão vai pra quem postou.")
         _responder(chat, f"✅ Na fila: {oferta['produto']} por {brl(float(oferta['preco']))} "
                          f"({oferta['loja']}). Já vai sair nesta rodada.{aviso}")
     return novas
@@ -1167,6 +1262,8 @@ def main() -> None:
             time.sleep(random.randint(20, 45))   # intervalo humano entre posts no WhatsApp
         historico[o["id"]] = time.time()
         historico[chave_nome(o["nome"])] = time.time()
+        if chave_tipo(o["nome"]):
+            historico[chave_tipo(o["nome"])] = time.time()
         if o.get("gid"):
             marcar_postados_no_garimpo([o["gid"]], historico)
         registrar_vitrine(o)
