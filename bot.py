@@ -70,6 +70,9 @@ RADAR_SUGESTOES = int(os.getenv("RADAR_SUGESTOES", "5"))     # sugestões por ro
 OFERTAS_POR_RODADA = int(os.getenv("OFERTAS_POR_RODADA", "3"))
 # O que vocês aprovaram (painel/Telegram) sai TODO na mesma rodada, até esse limite de segurança
 MAX_APROVADAS = int(os.getenv("MAX_APROVADAS", "10"))
+# Teto de posts por rodada somando tudo (aprovadas + automáticas). 0 = sem teto.
+# O que passar do teto espera a próxima rodada (as aprovadas saem primeiro).
+MAX_TOTAL_RODADA = int(os.getenv("MAX_TOTAL_RODADA", "0"))
 PALAVRAS = [p.strip() for p in os.getenv(
     "PALAVRAS",
     "legging fitness,conjunto fitness feminino,top academia,short academia feminino,"
@@ -228,6 +231,8 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
     tipos_rodada, cats_rodada = set(), {}
     corte_tipo = time.time() - HORAS_MESMO_TIPO * 3600
     for o in boas:
+        if MAX_TOTAL_RODADA and len(final) >= MAX_TOTAL_RODADA:
+            break
         if o["id"] in vistos or chave_nome(o.get("nome", "")) in vistos:
             continue
         if o.get("manual"):
