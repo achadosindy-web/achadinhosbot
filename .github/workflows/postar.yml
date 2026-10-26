@@ -153,6 +153,8 @@ jobs:
           DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (Yuri ajustou em 25/10)
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
+          # Grupos de WhatsApp que o número do robô lê como fonte (formato Nome=codigo@g.us). Fica no segredo RADAR_GRUPOS_ZAP.
+          RADAR_GRUPOS_ZAP: ${{ secrets.RADAR_GRUPOS_ZAP }}
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
           # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10).
           # Eletro/casa: gtOFERTAS, promo_imperdivel, vrlofertas, ctofertaseletroetv (CT Ofertas Eletro e TV),
