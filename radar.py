@@ -105,11 +105,28 @@ def ler_grupo_zap(grupo: str) -> list[dict]:
     base = (os.getenv("GREEN_URL", "").strip() or "https://api.green-api.com").rstrip("/")
     if not (gid and token and chat):
         return []
-    r = requests.post(f"{base}/waInstance{gid}/getChatHistory/{token}",
-                      json={"chatId": chat, "count": 60}, timeout=40)
-    r.raise_for_status()
+    mensagens, erro = None, ""
+    for espera in (0, 4, 12):           # 429 = Green-API pedindo pra ir mais devagar: espera e tenta de novo
+        time.sleep(espera)
+        r = requests.post(f"{base}/waInstance{gid}/getChatHistory/{token}",
+                          json={"chatId": chat, "count": 60}, timeout=40)
+        if r.status_code == 429:
+            erro = "429 (muitas requisições)"
+            continue
+        r.raise_for_status()
+        mensagens = r.json() or []
+        break
+    if mensagens is None:
+        # plano B: mensagens recebidas nas últimas horas (outro limite do plano), filtrando o grupo
+        time.sleep(3)
+        r = requests.get(f"{base}/waInstance{gid}/lastIncomingMessages/{token}",
+                         params={"minutes": int(HORAS_MAX * 60)}, timeout=40)
+        if r.status_code >= 400:
+            raise RuntimeError(f"histórico: {erro}; últimas recebidas: {r.status_code} {r.text[:120]}")
+        mensagens = [m for m in (r.json() or []) if m.get("chatId") == chat]
+        print(f"[radar] WhatsApp: usei as últimas mensagens recebidas ({len(mensagens)} do grupo)")
     posts = []
-    for m in r.json() or []:
+    for m in mensagens:
         ext = m.get("extendedTextMessage") or {}
         texto = (m.get("textMessage") or m.get("caption") or ext.get("text") or "").strip()
         if not texto:
