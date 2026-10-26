@@ -147,7 +147,8 @@ jobs:
           GREEN_ID: ${{ secrets.GREEN_ID_BF || secrets.GREEN_ID }}
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_BF || secrets.GREEN_TOKEN }}
           GREEN_URL: ${{ secrets.GREEN_URL_BF || secrets.GREEN_URL }}
-          OFERTAS_POR_RODADA: "4"    # 10 rodadas por dia x 4 = até 40 ofertas/dia (se tiver achado bom)
+          OFERTAS_POR_RODADA: "5"    # automáticas por rodada
+          MAX_TOTAL_RODADA: "5"      # no máximo 5 posts por envio, somando aprovadas + automáticas (aprovadas saem primeiro)
           RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
           DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (Yuri ajustou em 25/10)
