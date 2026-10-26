@@ -4,7 +4,7 @@
 #
 # Perfis no mesmo robô:
 #   ingrid      -> grupo Achadinhos da Indy (segredos de sempre, arquivos na raiz). Posta só o que vocês aprovam.
-#   blackfriday -> grupo Black Friday da Indy: SÓ produtos com 25% OFF ou mais, qualquer categoria.
+#   blackfriday -> grupo Black Friday da Indy: SÓ produtos com 40% OFF ou mais, qualquer categoria.
 #                  Posta sozinho. Segredos _BF, arquivos em perfis/blackfriday/.
 #   geral       -> DESLIGADO por enquanto (o grupo que era "Achadinhos geral" virou o Black Friday).
 #                  Pra religar um dia: troque LIGAR_GERAL pra "sim" lá embaixo.
@@ -126,7 +126,7 @@ jobs:
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor"
         run: python bot.py
 
-      # ---------------- Perfil Black Friday: só produtos com 25% OFF ou mais ----------------
+      # ---------------- Perfil Black Friday: só produtos com 40% OFF ou mais ----------------
       - name: Postar ofertas (Black Friday)
         if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'blackfriday') && env.TEM_BF == 'true'
         continue-on-error: true
@@ -150,7 +150,7 @@ jobs:
           OFERTAS_POR_RODADA: "4"    # 10 rodadas por dia x 4 = até 40 ofertas/dia (se tiver achado bom)
           RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
           RADAR_NICHO: "tudo"
-          DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (depois da Black Friday dá pra baixar pra 25)
+          DESCONTO_GARIMPO: "40"    # só entra no garimpo o que tiver 40% OFF ou mais (depois da Black Friday dá pra baixar pra 25)
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
