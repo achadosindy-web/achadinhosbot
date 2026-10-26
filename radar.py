@@ -9,13 +9,18 @@ import html
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
 AMAZON_TAG = os.getenv("AMAZON_TAG", "").strip()
 CANAIS = [c.strip().lstrip("@") for c in os.getenv(
     "RADAR_CANAIS", "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadinhosdamanoella,modafemininaofertas,laniceachados,glowupestilofeminino,segredodoscosmeticos,belezaempromocao,skincareecapilar,topmaquiagemeflores,acheinashopee_casa,achadoscasaedecor,achadinhosdadri,mundocasaeachados,achadosfitnessbr,modafitnesselook,glowupfitnessbr,achadosshopebrasil,achadosimperdiveisbr,achadinhosdarachel,ofertasfemininas,detectordecupons,guerradealsfit").split(",") if c.strip()]
+# Grupos de WhatsApp lidos pelo número do robô (Green-API), ex.: "Eletro em Oferta=1203...@g.us"
+GRUPOS_ZAP = [g.strip() for g in os.getenv("RADAR_GRUPOS_ZAP", "").split(",") if g.strip()]
+# O plano grátis do Green-API deixa ler o histórico 300 vezes por mês: o robô só lê nas
+# rodadas "cheias" (9h, 12h, 15h, 19h e 21h), que dá ~155 leituras por grupo no mês.
+HORAS_LER_ZAP = {int(h) for h in os.getenv("RADAR_ZAP_HORAS", "9,12,15,19,21").split(",") if h.strip()}
 HORAS_MAX = float(os.getenv("RADAR_HORAS", "12"))      # ignora posts mais velhos que isso
 UA = {"User-Agent": "Mozilla/5.0 (compatible; AchadinhosBot/1.0)"}
 
@@ -82,6 +87,46 @@ def ler_canal(canal: str) -> list[dict]:
             break
         antes = min(ids)
         time.sleep(0.5)
+    return posts
+
+
+def _hora_de_ler_zap() -> bool:
+    if os.getenv("RADAR_ZAP_SEMPRE", "").strip() in ("1", "sim"):
+        return True
+    agora = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=-3)))
+    return agora.hour in HORAS_LER_ZAP and agora.minute < 25
+
+
+def ler_grupo_zap(grupo: str) -> list[dict]:
+    """Últimas mensagens de um grupo de WhatsApp em que o número do robô está (Green-API)."""
+    nome, _, chat = grupo.rpartition("=")
+    chat = chat.strip()
+    gid, token = os.getenv("GREEN_ID", "").strip(), os.getenv("GREEN_TOKEN", "").strip()
+    base = (os.getenv("GREEN_URL", "").strip() or "https://api.green-api.com").rstrip("/")
+    if not (gid and token and chat):
+        return []
+    r = requests.post(f"{base}/waInstance{gid}/getChatHistory/{token}",
+                      json={"chatId": chat, "count": 60}, timeout=40)
+    r.raise_for_status()
+    posts = []
+    for m in r.json() or []:
+        ext = m.get("extendedTextMessage") or {}
+        texto = (m.get("textMessage") or m.get("caption") or ext.get("text") or "").strip()
+        if not texto:
+            continue
+        links = re.findall(r"https?://[^\s<>\"')]+", texto)
+        links += ["https://" + l for l in re.findall(r"(?<![/\w])(?:amzn\.to|meli\.la|s\.shopee\.com\.br|shope\.ee)/[A-Za-z0-9]+", texto)]
+        quando = ""
+        if m.get("timestamp"):
+            quando = datetime.fromtimestamp(int(m["timestamp"]), timezone.utc).isoformat()
+        posts.append({
+            "id": f"zap/{m.get('idMessage', '')}",
+            "texto": texto,
+            "links": list(dict.fromkeys(links)),
+            "foto": m.get("downloadUrl") or None,
+            "quando": quando,
+            "url": "",
+        })
     return posts
 
 
@@ -329,12 +374,20 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     por_loja: dict[str, int] = {}
     saltos_restantes = 400                      # limite de links desconhecidos seguidos por rodada
     amazon_restantes = 80                       # limite de links da Amazon resolvidos por rodada
-    for canal in CANAIS:
+    fontes = list(CANAIS)
+    if GRUPOS_ZAP:
+        if _hora_de_ler_zap():
+            fontes += ["zap:" + g for g in GRUPOS_ZAP]
+        else:
+            print("[radar] grupos de WhatsApp: fora do horário de leitura (economiza o limite do Green-API)")
+    for canal in fontes:
         try:
-            posts = ler_canal(canal)
+            posts = ler_grupo_zap(canal[4:]) if canal.startswith("zap:") else ler_canal(canal)
         except Exception as e:
             print(f"[radar] não consegui ler @{canal}: {e}")
             continue
+        if canal.startswith("zap:"):
+            canal = "WhatsApp " + (canal[4:].rpartition("=")[0] or "grupo")
         print(f"[radar] @{canal}: {len(posts)} posts lidos")
         for p in posts:
             total += 1
@@ -393,7 +446,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                 "categoria": "Fitness" if e_roupa_fitness(p["texto"]) else categoria(p["texto"]),
                 "quando": p["quando"],
                 "link_original": alvo,
-                "post": f"https://t.me/{p['id']}",
+                "post": p.get("url", f"https://t.me/{p['id']}"),
             }
             if loja == "Amazon":
                 if amazon_restantes <= 0:
