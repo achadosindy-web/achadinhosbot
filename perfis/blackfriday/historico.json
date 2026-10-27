@@ -142,7 +142,12 @@
   "688428",
   "b44a96",
   "201b0f",
-  "fe5006"
+  "fe5006",
+  "ed2c9b",
+  "695ec4",
+  "1107de",
+  "bd30af",
+  "7aa997"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
  "_tg_offset": 808290565,
@@ -351,7 +356,7 @@
  "tipo-parafusadeira": 1793027558.7025716,
  "radar-B09XJL4B9H": 1793027602.7388713,
  "nome-kit12potesherm\u00e9ticoselectroluxctampa": 1793027602.7388763,
- "tipo-pote": 1793027602.7391164,
+ "tipo-pote": 1793113831.1578057,
  "radar-B0CW976R89": 1793028139.05664,
  "nome-fechaduradigitaldesobreporaberturaporsen": 1793028139.0566442,
  "tipo-fechadura": 1793028139.0570877,
@@ -476,5 +481,19 @@
  "nome-karstenjogodecamatombegeroseking100algod": 1793111065.3243835,
  "tipo-karsten": 1793111065.3249285,
  "radar-B0B91WQ41J": 1793111092.8104079,
- "nome-neutrogenahidratantecorporalintensivonor": 1793111092.8104136
+ "nome-neutrogenahidratantecorporalintensivonor": 1793111092.8104136,
+ "radar-B0HFKYSB3S": 1793113763.832597,
+ "nome-kitvaralretr\u00e1tildobr\u00e1vela\u00e7orefor\u00e7ado4msu": 1793113763.8326035,
+ "tipo-varal": 1793113763.8329098,
+ "radar-B0FNGHWMZT": 1793113797.1376483,
+ "nome-dove\u00f3leoes\u00e9rumbif\u00e1sicouvrepairglowfer\u00fali": 1793113797.1376576,
+ "tipo-dove": 1793113797.1383052,
+ "radar-B0F371Z6RH": 1793113831.1572163,
+ "nome-kitcom5potesdevidrogatopanda640mlretangu": 1793113831.157221,
+ "radar-B0H1RYTMR3": 1793113877.1484735,
+ "nome-caixaamplificadaxsoundmondialpreto220wrm": 1793113877.1484795,
+ "tipo-amplificada": 1793113877.149075,
+ "radar-B0CVS3GRRC": 1793113911.6838639,
+ "nome-medidordigitaldepress\u00e3oparapneusmdp155": 1793113911.6838706,
+ "tipo-medidor": 1793113911.684516
 }
