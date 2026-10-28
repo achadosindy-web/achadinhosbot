@@ -919,6 +919,7 @@ def atualizar_painel(historico: dict) -> int:
     agora = datetime.now(BR)
     adicionados = 0
     fotos_buscadas = 0
+    ml_resolvidos = 0
     for o in novos:
         gid = _gid(o["id"])
         if gid in itens:
@@ -931,6 +932,10 @@ def atualizar_painel(historico: dict) -> int:
         if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
             continue
         adicionados += 1
+        abrir = ""
+        if o["loja"] == "Mercado Livre" and "meli.la" in o["link"] and ml_resolvidos < 30:
+            ml_resolvidos += 1                  # link de outro afiliado: acha a página certa do produto
+            abrir = radar.ml_pagina_do_produto(o["link"])
         if not o.get("imagem") and fotos_buscadas < 25:
             fotos_buscadas += 1                 # post do canal sem foto: busca a foto do produto
             try:
@@ -941,7 +946,7 @@ def atualizar_painel(historico: dict) -> int:
             "gid": gid, "id": o["id"], "loja": o["loja"], "nome": o["nome"],
             "preco": o["preco"], "preco_antes": o.get("preco_antes") or 0,
             "desconto": o.get("desconto") or 0, "cupom": o.get("cupom", ""),
-            "imagem": o.get("imagem") or "", "link": o["link"],
+            "imagem": o.get("imagem") or "", "link": o["link"], "abrir": abrir,
             "converter": bool(o.get("converter")), "categoria": o.get("categoria", "Outros"),
             "fonte": o.get("fonte", ""), "post": o.get("post", ""),
             "quando": o.get("quando") or agora.isoformat(timespec="minutes"),
@@ -954,7 +959,18 @@ def atualizar_painel(historico: dict) -> int:
         except Exception:
             return True
     aprovados = set(historico.get("_aprovados", []))
-    lista = [dict(i, aprovado=i["gid"] in aprovados) for i in itens.values() if recente(i)]
+    def cabe(i):                                 # regras valem também pro que já estava no painel
+        if i["gid"] in aprovados:
+            return True
+        cat = (i.get("categoria") or "Outros").lower()
+        if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
+            return False
+        if PRECO_MINIMO and (i.get("preco") or 0) < PRECO_MINIMO:
+            return False
+        if DESCONTO_GARIMPO and (i.get("desconto") or 0) < DESCONTO_GARIMPO:
+            return False
+        return True
+    lista = [dict(i, aprovado=i["gid"] in aprovados) for i in itens.values() if recente(i) and cabe(i)]
     lista.sort(key=lambda i: i.get("achado_em", ""), reverse=True)
     GARIMPO.write_text(json.dumps({
         "atualizado": agora.isoformat(timespec="minutes"),

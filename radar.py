@@ -352,6 +352,21 @@ def seguir(url: str, saltos: int = 4) -> str:
     return final
 
 
+def ml_pagina_do_produto(url: str) -> str:
+    """meli.la de outro afiliado costuma abrir a VITRINE dele (com outro produto em cima).
+    Segue o link e devolve a página limpa do produto, ou "" se caiu numa vitrine."""
+    try:
+        final = requests.get(url, headers=UA_NAV, timeout=8, allow_redirects=True).url
+    except Exception:
+        return ""
+    caminho = final.split("?")[0].split("#")[0]
+    if "/social/" in caminho or not re.search(r"mercadoli(vre|bre)\.", caminho):
+        return ""
+    if re.search(r"/MLB-?\d{6,}|/p/MLB\d{6,}|/up/MLBU\d+", caminho, re.I):
+        return caminho
+    return ""
+
+
 def link_nosso(asin: str) -> str:
     return f"https://www.amazon.com.br/dp/{asin}" + (f"?tag={AMAZON_TAG}" if AMAZON_TAG else "")
 
