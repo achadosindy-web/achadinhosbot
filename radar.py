@@ -254,16 +254,23 @@ def preco_na_amazon(asin: str) -> tuple[float, int] | None:
     return preco, int(m_pct.group(1)) if m_pct else 0
 
 
-def preco_da_pagina(url: str) -> float:
+def preco_da_pagina(url: str, nome: str = "") -> float:
     """Preço da página do produto (Mercado Livre, Shopee e outras), sem cupom. 0 se não achar."""
     try:
         r = requests.get(url, headers=UA_NAV, timeout=20, allow_redirects=True)
         h = r.text if r.ok else ""
     except Exception:
         return 0.0
-    for padrao in (r'itemprop="price"\s+content="([\d.]+)"',
-                   r'property="product:price:amount"\s+content="([\d.]+)"',
-                   r'"price"\s*:\s*"?([\d]+(?:\.\d{1,2})?)"?'):
+    padroes = [r'itemprop="price"\s+content="([\d.]+)"',
+               r'property="product:price:amount"\s+content="([\d.]+)"']
+    if "mercadoli" in r.url:
+        if "/social/" in r.url:
+            # link de afiliado do ML abre a vitrine: pega o preço do card DESTE produto
+            return ml_achar_na_vitrine(h, nome)[1] if nome else 0.0
+    else:
+        # o "price" solto do código da página só vale fora do ML (lá ele pega preço de outro produto)
+        padroes.append(r'"price"\s*:\s*"?([\d]+(?:\.\d{1,2})?)"?')
+    for padrao in padroes:
         m = re.search(padrao, h)
         if m:
             try:
@@ -361,7 +368,7 @@ def _palavras(t: str) -> set:
 
 def ml_produtos_da_vitrine(pag: str) -> list[tuple[str, str, float]]:
     """Cards da vitrine (perfil social) do ML: (link do produto, título, preço sem cupom)."""
-    pag = pag.replace("\\u002F", "/").replace("\\/", "/")
+    pag = pag.replace('\\"', '"').replace("\\u002F", "/").replace("\\/", "/")
     saida = []
     achados = list(re.finditer(r'"url":"((?:https?://)?(?:www|produto)\.mercadolivre\.com\.br/[^"]+)"', pag))
     for k, m in enumerate(achados):
@@ -642,12 +649,12 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     base["imagem"] = _foto_lida[asin]   # foto oficial, sem logo de outro canal
             else:
                 if com_cupom:
-                    preco_pag = preco_da_pagina(alvo)
+                    preco_pag = preco_da_pagina(alvo, base["nome"])
                     if not preco_pag:
                         cupom_sem_preco += 1
                         continue
                     antes = base["preco_antes"] if base["preco_antes"] > preco_pag else 0
-                    base.update(preco=preco_pag, preco_antes=antes,
+                    base.update(preco=preco_pag, preco_antes=antes, preco_conferido=True,
                                 desconto=round((1 - preco_pag / antes) * 100) if antes > preco_pag else 0)
                 if base["desconto"] >= DESCONTO_SUSPEITO:
                     suspeitos += 1

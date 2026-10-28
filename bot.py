@@ -936,6 +936,16 @@ def atualizar_painel(historico: dict) -> int:
                          preco_antes=round(o["preco"] / (1 - d / 100), 2) if 0 < d < 100 else 0)
                 novos.append(o)
             print(f"[painel] Shopee '{palavra}': {len(achados)} produto(s)")
+    # Mesmo link curto usado em produtos DIFERENTES = link da vitrine do canal, não do produto
+    # (o Descontos Top usa o mesmo meli.la/2MiAos1 pro tablet Lenovo, Redmi Pad...). Esses saem.
+    nomes_por_link: dict[str, set] = {}
+    for x in list(itens.values()) + novos:
+        if precisa_checar(x):
+            nomes_por_link.setdefault(x["link"], set()).add(" ".join(sorted(radar._palavras(x["nome"]))[:6]))
+    link_de_vitrine = {l for l, ns in nomes_por_link.items() if len(ns) > 1}
+    if link_de_vitrine:
+        print(f"[painel] {len(link_de_vitrine)} link(s) de vitrine (mesmo link pra produtos diferentes): fora")
+    canais_ativos = {c.strip().lower() for c in os.getenv("RADAR_CANAIS", "").split(",") if c.strip()}
     agora = datetime.now(BR)
     adicionados = 0
     fotos_buscadas = 0
@@ -950,6 +960,8 @@ def atualizar_painel(historico: dict) -> int:
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             continue
         if not nome_ok(o.get("nome", "")):
+            continue
+        if o["link"] in link_de_vitrine:
             continue
         if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
             continue
@@ -984,6 +996,7 @@ def atualizar_painel(historico: dict) -> int:
             "preco": o["preco"], "preco_antes": o.get("preco_antes") or 0,
             "desconto": o.get("desconto") or 0, "cupom": o.get("cupom", ""),
             "imagem": o.get("imagem") or "", "link": o["link"], "abrir": abrir, "checado": precisa_checar(o),
+            "preco_conferido": bool(o.get("preco_conferido")),
             "converter": bool(o.get("converter")), "categoria": o.get("categoria", "Outros"),
             "fonte": o.get("fonte", ""), "post": o.get("post", ""),
             "quando": o.get("quando") or agora.isoformat(timespec="minutes"),
@@ -1000,6 +1013,14 @@ def atualizar_painel(historico: dict) -> int:
         # (antes, item aprovado/postado ficava mesmo fora da regra: era assim que sabonete e fralda continuavam no painel)
         if not nome_ok(i.get("nome", "")):
             return False
+        if i.get("link") in link_de_vitrine:
+            return False
+        if i.get("loja") != "Amazon" and i.get("cupom") and not i.get("preco_conferido"):
+            return False                         # preço do post era COM cupom e não deu pra conferir na página
+        fonte = (i.get("fonte") or "").lstrip("@").lower()
+        if canais_ativos and fonte and not fonte.startswith("whatsapp") and fonte not in canais_ativos \
+                and i.get("loja") != "Amazon" and fonte != "shopee":
+            return False                         # canal que saiu da lista (ex.: descontos_top em 28/10)
         cat = (i.get("categoria") or "Outros").lower()
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             return False
