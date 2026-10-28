@@ -8,6 +8,7 @@ from __future__ import annotations
 import html
 import os
 import re
+import unicodedata
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -352,19 +353,38 @@ def seguir(url: str, saltos: int = 4) -> str:
     return final
 
 
-def ml_pagina_do_produto(url: str) -> str:
+def _palavras(t: str) -> set:
+    t = unicodedata.normalize("NFD", t.lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return {p for p in re.findall(r"[a-z0-9]+", t) if len(p) > 1}
+
+
+def ml_pagina_do_produto(url: str, nome: str = "") -> str:
     """meli.la de outro afiliado costuma abrir a VITRINE dele (com outro produto em cima).
-    Segue o link e devolve a página limpa do produto, ou "" se caiu numa vitrine."""
+    Segue o link e devolve a página do produto. Se cair na vitrine, procura nela o produto
+    com o mesmo nome. Devolve "" se não achar."""
     try:
-        final = requests.get(url, headers=UA_NAV, timeout=8, allow_redirects=True).url
+        r = requests.get(url, headers=UA_NAV, timeout=10, allow_redirects=True)
     except Exception:
         return ""
-    caminho = final.split("?")[0].split("#")[0]
-    if "/social/" in caminho or not re.search(r"mercadoli(vre|bre)\.", caminho):
+    caminho = r.url.split("?")[0].split("#")[0]
+    if not re.search(r"mercadoli(vre|bre)\.", caminho):
         return ""
-    if re.search(r"/MLB-?\d{6,}|/p/MLB\d{6,}|/up/MLBU\d+", caminho, re.I):
+    if "/social/" not in caminho and re.search(r"/MLB-?\d{6,}|/p/MLB\d{6,}|/up/MLBU\d+", caminho, re.I):
         return caminho
-    return ""
+    # vitrine: acha o link do produto que bate com o nome do post
+    pag = html.unescape(r.text[:2_000_000]).replace("\\u002F", "/").replace("\\/", "/")
+    links = set(re.findall(r"https?://(?:produto|www)\.mercadolivre\.com\.br/[^\s\"'<>\\]*?(?:MLB-?\d{6,}|/p/MLB\d{6,})[^\s\"'<>\\?#]*", pag, re.I))
+    alvo = _palavras(nome)
+    if not alvo:
+        return ""
+    melhor, nota = "", 0.0
+    for l in links:
+        slug = _palavras(l.split("mercadolivre.com.br/", 1)[1].replace("-", " "))
+        n = len(alvo & slug) / len(alvo)
+        if n > nota:
+            melhor, nota = l, n
+    return melhor if nota >= 0.5 else ""
 
 
 def shopee_pagina_do_produto(url: str) -> tuple[str, str]:

@@ -893,6 +893,16 @@ def _usuario_do_bot(historico: dict) -> str:
     return historico.get("_bot_user", "")
 
 
+def precisa_checar(o: dict) -> bool:
+    """Link curto de OUTRO afiliado (Mercado Livre / Shopee): tem que achar a página do produto."""
+    l = o.get("link", "")
+    if o.get("loja") == "Mercado Livre":
+        return "meli.la" in l
+    if o.get("loja") == "Shopee" and not o.get("converter"):
+        return bool(re.search(r"s\.shopee\.com\.br|shope\.ee", l))
+    return False
+
+
 def atualizar_painel(historico: dict) -> int:
     """Junta o que o radar achou em garimpo.json (as últimas 48h, até 250 itens)."""
     dados = _ler_garimpo()
@@ -932,11 +942,16 @@ def atualizar_painel(historico: dict) -> int:
         if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
             continue
         abrir = ""
-        if o["loja"] == "Mercado Livre" and "meli.la" in o["link"] and ml_resolvidos < 30:
+        if precisa_checar(o) and ml_resolvidos >= 30:
+            continue                            # passou do limite da rodada: confere na próxima
+        if o["loja"] == "Mercado Livre" and "meli.la" in o["link"]:
             ml_resolvidos += 1                  # link de outro afiliado: acha a página certa do produto
-            abrir = radar.ml_pagina_do_produto(o["link"])
+            abrir = radar.ml_pagina_do_produto(o["link"], o["nome"])
+            if not abrir:                       # sem o link do produto, não serve: o painel tem que abrir direto nele
+                print(f"[painel] fora (não achei o link do produto no Mercado Livre): {o['nome'][:50]}")
+                continue
         elif (o["loja"] == "Shopee" and not o.get("converter")
-              and re.search(r"s\.shopee\.com\.br|shope\.ee", o["link"]) and ml_resolvidos < 30):
+              and re.search(r"s\.shopee\.com\.br|shope\.ee", o["link"])):
             ml_resolvidos += 1
             tipo, abrir = radar.shopee_pagina_do_produto(o["link"])
             if tipo == "campanha":              # link leva pra página de cupom, não pro produto: preço não dá pra confiar
@@ -953,7 +968,7 @@ def atualizar_painel(historico: dict) -> int:
             "gid": gid, "id": o["id"], "loja": o["loja"], "nome": o["nome"],
             "preco": o["preco"], "preco_antes": o.get("preco_antes") or 0,
             "desconto": o.get("desconto") or 0, "cupom": o.get("cupom", ""),
-            "imagem": o.get("imagem") or "", "link": o["link"], "abrir": abrir,
+            "imagem": o.get("imagem") or "", "link": o["link"], "abrir": abrir, "checado": precisa_checar(o),
             "converter": bool(o.get("converter")), "categoria": o.get("categoria", "Outros"),
             "fonte": o.get("fonte", ""), "post": o.get("post", ""),
             "quando": o.get("quando") or agora.isoformat(timespec="minutes"),
@@ -969,6 +984,8 @@ def atualizar_painel(historico: dict) -> int:
     def cabe(i):                                 # regras valem também pro que já estava no painel
         if i["gid"] in aprovados:
             return True
+        if precisa_checar(i) and not i.get("checado"):
+            return False                         # da versão antiga: o link abria vitrine/cupom de outro canal
         cat = (i.get("categoria") or "Outros").lower()
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             return False
