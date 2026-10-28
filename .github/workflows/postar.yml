@@ -161,7 +161,6 @@ jobs:
           LEMBRETE_PAINEL: "sim"    # avisa no Telegram quando tiver achado novo pra escolher
           RADAR_NICHO: "tudo"
           DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (Yuri ajustou em 25/10)
-          CATEGORIAS_GARIMPO: "Eletrodomésticos,Eletrônicos"   # o grupo da Black só recebe eletro (pedido do Yuri, 28/10)
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos"   # eletrodomésticos saem primeiro
           PRECO_MINIMO: "80"        # nada abaixo de R$ 80 (corta carregador, pilha, acessório barato)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
