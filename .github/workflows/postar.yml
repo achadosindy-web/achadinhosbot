@@ -45,6 +45,12 @@ on:
         description: "Cupom (opcional)"
         required: false
         default: ""
+      modo:
+        description: "Formulário: agora = posta só este produto; guardar = vai pra fila do painel"
+        required: false
+        default: "agora"
+        type: choice
+        options: [agora, guardar]
 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
 concurrency:
@@ -85,6 +91,7 @@ jobs:
           OFERTA_PRECO: ${{ inputs.perfil == 'ingrid' && inputs.preco || '' }}
           OFERTA_PRECO_ANTES: ${{ inputs.perfil == 'ingrid' && inputs.preco_antes || '' }}
           OFERTA_CUPOM: ${{ inputs.perfil == 'ingrid' && inputs.cupom || '' }}
+          OFERTA_MODO: ${{ inputs.perfil == 'ingrid' && inputs.modo || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -137,6 +144,7 @@ jobs:
           OFERTA_PRECO: ${{ inputs.perfil == 'blackfriday' && inputs.preco || '' }}
           OFERTA_PRECO_ANTES: ${{ inputs.perfil == 'blackfriday' && inputs.preco_antes || '' }}
           OFERTA_CUPOM: ${{ inputs.perfil == 'blackfriday' && inputs.cupom || '' }}
+          OFERTA_MODO: ${{ inputs.perfil == 'blackfriday' && inputs.modo || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BF }}
@@ -149,10 +157,13 @@ jobs:
           GREEN_URL: ${{ secrets.GREEN_URL_BF || secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "5"    # automáticas por rodada
           MAX_TOTAL_RODADA: "5"      # no máximo 5 posts por envio, somando aprovadas + automáticas (aprovadas saem primeiro)
-          RADAR_MODO: "automatico"  # posta sozinho o que já tem o link de vocês; o resto fica no painel
+          RADAR_MODO: "painel"      # 28/10: nada sai sozinho; o robô garimpa e o Yuri escolhe no painel
+          LEMBRETE_PAINEL: "sim"    # avisa no Telegram quando tiver achado novo pra escolher
           RADAR_NICHO: "tudo"
           DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (Yuri ajustou em 25/10)
-          CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos,Casa,Beleza"   # saem primeiro (o que o povo corre atrás)
+          CATEGORIAS_GARIMPO: "Eletrodomésticos,Eletrônicos"   # o grupo da Black só recebe eletro (pedido do Yuri, 28/10)
+          CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos"   # eletrodomésticos saem primeiro
+          PRECO_MINIMO: "80"        # nada abaixo de R$ 80 (corta carregador, pilha, acessório barato)
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           # Grupos de WhatsApp que o número do robô lê como fonte (formato Nome=codigo@g.us). Fica no segredo RADAR_GRUPOS_ZAP.
           RADAR_GRUPOS_ZAP: ${{ secrets.RADAR_GRUPOS_ZAP }}
@@ -160,7 +171,8 @@ jobs:
           # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10).
           # Eletro/casa: gtOFERTAS, promo_imperdivel, vrlofertas, ctofertaseletroetv (CT Ofertas Eletro e TV),
           # ofertas_harpyja (eletroportáteis Amazon), escolhasegura, cacadoresofertas, cupons_desconto (Promobit)
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor,guerradealsfit,nerdofertas,cuponsjersu,descontos_top,promocoesecuponsglobais,gtOFERTAS,promo_imperdivel,vrlofertas,ctofertaseletroetv,ofertas_harpyja,escolhasegura,cacadoresofertas,cupons_desconto"
+          # 28/10: só canais fortes em eletro/eletrônicos (os de achadinho geral saíram). Fonte principal: grupo Eletro em Oferta.
+          RADAR_CANAIS: "ctofertaseletroetv,ofertas_harpyja,promo_imperdivel,vrlofertas,gtOFERTAS,escolhasegura,cacadoresofertas,nerdofertas,pelandobr,urubupromo,cupons_desconto"
         run: python bot.py
 
       - name: Guardar histórico (evita repetir oferta)
