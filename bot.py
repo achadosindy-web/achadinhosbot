@@ -893,11 +893,21 @@ def _usuario_do_bot(historico: dict) -> str:
     return historico.get("_bot_user", "")
 
 
+def nome_ok(nome: str) -> bool:
+    """Descarta "nome" que na verdade é frase do post ou código de cupom."""
+    n = nome.strip()
+    if not n or re.search(radar._NAO_E_NOME, n, re.I):
+        return False
+    if " " not in n and re.search(r"\d", n):         # CELULARES2810, BLACK50…
+        return False
+    return len(re.findall(r"[A-Za-zÀ-ÿ]{3,}", n)) >= 1 and len(n) >= 8
+
+
 def precisa_checar(o: dict) -> bool:
     """Link curto de OUTRO afiliado (Mercado Livre / Shopee): tem que achar a página do produto."""
     l = o.get("link", "")
-    if o.get("loja") == "Mercado Livre":
-        return "meli.la" in l
+    if o.get("loja") == "Mercado Livre":            # qualquer link do ML que não seja a página do produto
+        return not re.search(r"mercadolivre\.com\.br/.*(?:MLB-?\d{6,}|/p/MLB\d{6,})", l.split("?")[0], re.I)
     if o.get("loja") == "Shopee" and not o.get("converter"):
         return bool(re.search(r"s\.shopee\.com\.br|shope\.ee", l))
     return False
@@ -939,17 +949,28 @@ def atualizar_painel(historico: dict) -> int:
         cat = (o.get("categoria") or "Outros").lower()
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             continue
+        if not nome_ok(o.get("nome", "")):
+            continue
         if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
             continue
         abrir = ""
         if precisa_checar(o) and ml_resolvidos >= 30:
             continue                            # passou do limite da rodada: confere na próxima
-        if o["loja"] == "Mercado Livre" and "meli.la" in o["link"]:
+        if o["loja"] == "Mercado Livre" and precisa_checar(o):
             ml_resolvidos += 1                  # link de outro afiliado: acha a página certa do produto
-            abrir = radar.ml_pagina_do_produto(o["link"], o["nome"])
+            abrir, preco_ml = radar.ml_pagina_do_produto(o["link"], o["nome"])
             if not abrir:                       # sem o link do produto, não serve: o painel tem que abrir direto nele
                 print(f"[painel] fora (não achei o link do produto no Mercado Livre): {o['nome'][:50]}")
                 continue
+            if preco_ml and abs(preco_ml - o["preco"]) > 0.5:
+                # preço que o Mercado Livre mostra (sem cupom) manda; o do post pode ser já com cupom
+                print(f"[painel] preço do ML: {o['nome'][:40]} R$ {o['preco']:.2f} -> R$ {preco_ml:.2f}")
+                o["preco"] = preco_ml
+                antes = o.get("preco_antes") or 0
+                o["desconto"] = round((1 - preco_ml / antes) * 100) if antes > preco_ml else 0
+                if DESCONTO_GARIMPO and o["desconto"] < DESCONTO_GARIMPO:
+                    print(f"[painel] fora (sem o cupom o desconto é só {o['desconto']}%): {o['nome'][:50]}")
+                    continue
         elif (o["loja"] == "Shopee" and not o.get("converter")
               and re.search(r"s\.shopee\.com\.br|shope\.ee", o["link"])):
             ml_resolvidos += 1
@@ -982,8 +1003,9 @@ def atualizar_painel(historico: dict) -> int:
             return True
     aprovados = set(historico.get("_aprovados", []))
     def cabe(i):                                 # regras valem também pro que já estava no painel
-        if i["gid"] in aprovados:
-            return True
+        # (antes, item aprovado/postado ficava mesmo fora da regra: era assim que sabonete e fralda continuavam no painel)
+        if not nome_ok(i.get("nome", "")):
+            return False
         if precisa_checar(i) and not i.get("checado"):
             return False                         # da versão antiga: o link abria vitrine/cupom de outro canal
         cat = (i.get("categoria") or "Outros").lower()

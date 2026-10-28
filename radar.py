@@ -359,32 +359,58 @@ def _palavras(t: str) -> set:
     return {p for p in re.findall(r"[a-z0-9]+", t) if len(p) > 1}
 
 
-def ml_pagina_do_produto(url: str, nome: str = "") -> str:
-    """meli.la de outro afiliado costuma abrir a VITRINE dele (com outro produto em cima).
-    Segue o link e devolve a página do produto. Se cair na vitrine, procura nela o produto
-    com o mesmo nome. Devolve "" se não achar."""
-    try:
-        r = requests.get(url, headers=UA_NAV, timeout=10, allow_redirects=True)
-    except Exception:
-        return ""
-    caminho = r.url.split("?")[0].split("#")[0]
-    if not re.search(r"mercadoli(vre|bre)\.", caminho):
-        return ""
-    if "/social/" not in caminho and re.search(r"/MLB-?\d{6,}|/p/MLB\d{6,}|/up/MLBU\d+", caminho, re.I):
-        return caminho
-    # vitrine: acha o link do produto que bate com o nome do post
-    pag = html.unescape(r.text[:2_000_000]).replace("\\u002F", "/").replace("\\/", "/")
-    links = set(re.findall(r"https?://(?:produto|www)\.mercadolivre\.com\.br/[^\s\"'<>\\]*?(?:MLB-?\d{6,}|/p/MLB\d{6,})[^\s\"'<>\\?#]*", pag, re.I))
+def ml_produtos_da_vitrine(pag: str) -> list[tuple[str, str, float]]:
+    """Cards da vitrine (perfil social) do ML: (link do produto, título, preço sem cupom)."""
+    pag = pag.replace("\\u002F", "/").replace("\\/", "/")
+    saida = []
+    achados = list(re.finditer(r'"url":"((?:https?://)?(?:www|produto)\.mercadolivre\.com\.br/[^"]+)"', pag))
+    for k, m in enumerate(achados):
+        url = m.group(1).split("#")[0].split("?")[0]
+        if not re.search(r"MLB-?\d{6,}|/p/MLB\d{6,}", url, re.I):
+            continue
+        fim = achados[k + 1].start() if k + 1 < len(achados) else m.end() + 6000
+        trecho = pag[m.end():min(fim, m.end() + 6000)]      # só o card deste link
+        ti = re.search(r'"type":"title"[^{]*\{"text":"([^"]+)"', trecho)
+        pr = re.search(r'"current_price":\{"value":([\d.]+)', trecho)
+        if not ti:
+            continue
+        if not url.startswith("http"):
+            url = "https://" + url
+        saida.append((url, html.unescape(ti.group(1)), float(pr.group(1)) if pr else 0.0))
+    return saida
+
+
+def ml_achar_na_vitrine(pag: str, nome: str) -> tuple[str, float]:
     alvo = _palavras(nome)
     if not alvo:
-        return ""
-    melhor, nota = "", 0.0
-    for l in links:
-        slug = _palavras(l.split("mercadolivre.com.br/", 1)[1].replace("-", " "))
-        n = len(alvo & slug) / len(alvo)
+        return "", 0.0
+    # código de modelo (a36, bms23a, t6c...) tem que bater; 128gb, 5g, 90hz não contam como modelo
+    modelos = {p for p in alvo if re.search(r"\d", p) and re.search(r"[a-z]", p)
+               and not re.fullmatch(r"\d+(gb|tb|g|mp|hz|w|l|ml|mah|k|pol|v|m|cm|mm|kg|pcs|x)", p)}
+    melhor, nota = ("", 0.0), 0.0
+    for url, titulo, preco in ml_produtos_da_vitrine(pag):
+        tit = _palavras(titulo)
+        if modelos - tit:
+            continue
+        n = len(alvo & tit) / len(alvo)
         if n > nota:
-            melhor, nota = l, n
-    return melhor if nota >= 0.5 else ""
+            melhor, nota = (url, preco), n
+    return melhor if nota >= 0.6 else ("", 0.0)
+
+
+def ml_pagina_do_produto(url: str, nome: str = "") -> tuple[str, float]:
+    """meli.la de outro afiliado costuma abrir a VITRINE dele (com outro produto em cima).
+    Segue o link e devolve (página do produto, preço da vitrine sem cupom); ("", 0) se não achar."""
+    try:
+        r = requests.get(url, headers=UA_NAV, timeout=12, allow_redirects=True)
+    except Exception:
+        return "", 0.0
+    caminho = r.url.split("?")[0].split("#")[0]
+    if not re.search(r"mercadoli(vre|bre)\.", caminho):
+        return "", 0.0
+    if "/social/" not in caminho and re.search(r"/MLB-?\d{6,}|/p/MLB\d{6,}|/up/MLBU\d+", caminho, re.I):
+        return caminho, 0.0
+    return ml_achar_na_vitrine(r.text, nome)
 
 
 def shopee_pagina_do_produto(url: str) -> tuple[str, str]:
@@ -440,7 +466,7 @@ def precos(texto: str) -> tuple[float, float]:
 
 
 # Linhas que são instrução ou propaganda de loja, não o nome do produto
-_NAO_E_NOME = (r"pode esgotar|esgota r[aá]pido|[eé] espetacular|o desconto [eé] aplicado|o pre[cç]o ajusta|m[eé]todo de pagamento|oferta regional|verifique se|dispon[ií]vel pra voc[eê]|"
+_NAO_E_NOME = (r"valor apenas|publi\b|me paga um caf[eé]|funciona em|pode esgotar|esgota r[aá]pido|[eé] espetacular|o desconto [eé] aplicado|o pre[cç]o ajusta|m[eé]todo de pagamento|oferta regional|verifique se|dispon[ií]vel pra voc[eê]|"
                r"ative aqui|pesquise|loja oficial|no an[uú]ncio|localize|clique|toque|acesse|copie|cole |"
                r"outras op[cç][oõ]es|selecione|programe e poupe|cancele quando|resgate|aplique|"
                r"v[aá]lido|promo[cç][aã]o rel[aâ]mpago|corre que|acabou de baixar|baixou|menor pre[cç]o|"
