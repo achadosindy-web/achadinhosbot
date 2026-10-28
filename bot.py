@@ -954,14 +954,11 @@ def atualizar_painel(historico: dict) -> int:
         if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
             continue
         abrir = ""
-        if precisa_checar(o) and ml_resolvidos >= 30:
-            continue                            # passou do limite da rodada: confere na próxima
-        if o["loja"] == "Mercado Livre" and precisa_checar(o):
+        checar = precisa_checar(o) and ml_resolvidos < 40   # tenta achar a página do produto (até 40 por rodada)
+        if o["loja"] == "Mercado Livre" and checar:
             ml_resolvidos += 1                  # link de outro afiliado: acha a página certa do produto
             abrir, preco_ml = radar.ml_pagina_do_produto(o["link"], o["nome"])
-            if not abrir:                       # sem o link do produto, não serve: o painel tem que abrir direto nele
-                print(f"[painel] fora (não achei o link do produto no Mercado Livre): {o['nome'][:50]}")
-                continue
+            # não achou a página do produto: fica com o link original, como sempre foi (28/10 18h, pedido do Yuri)
             if preco_ml and abs(preco_ml - o["preco"]) > 0.5:
                 # preço que o Mercado Livre mostra (sem cupom) manda; o do post pode ser já com cupom
                 print(f"[painel] preço do ML: {o['nome'][:40]} R$ {o['preco']:.2f} -> R$ {preco_ml:.2f}")
@@ -971,13 +968,10 @@ def atualizar_painel(historico: dict) -> int:
                 if DESCONTO_GARIMPO and o["desconto"] < DESCONTO_GARIMPO:
                     print(f"[painel] fora (sem o cupom o desconto é só {o['desconto']}%): {o['nome'][:50]}")
                     continue
-        elif (o["loja"] == "Shopee" and not o.get("converter")
-              and re.search(r"s\.shopee\.com\.br|shope\.ee", o["link"])):
+        elif o["loja"] == "Shopee" and checar:
             ml_resolvidos += 1
             tipo, abrir = radar.shopee_pagina_do_produto(o["link"])
-            if tipo == "campanha":              # link leva pra página de cupom, não pro produto: preço não dá pra confiar
-                print(f"[painel] fora (link da Shopee é de campanha): {o['nome'][:50]}")
-                continue
+            # se não for página de produto, fica com o link original, como sempre foi
         adicionados += 1
         if not o.get("imagem") and fotos_buscadas < 25:
             fotos_buscadas += 1                 # post do canal sem foto: busca a foto do produto
@@ -1006,8 +1000,6 @@ def atualizar_painel(historico: dict) -> int:
         # (antes, item aprovado/postado ficava mesmo fora da regra: era assim que sabonete e fralda continuavam no painel)
         if not nome_ok(i.get("nome", "")):
             return False
-        if precisa_checar(i) and not i.get("checado"):
-            return False                         # da versão antiga: o link abria vitrine/cupom de outro canal
         cat = (i.get("categoria") or "Outros").lower()
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             return False
