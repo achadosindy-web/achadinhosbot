@@ -9,7 +9,7 @@
 #   geral       -> DESLIGADO por enquanto (o grupo que era "Achadinhos geral" virou o Black Friday).
 #                  Pra religar um dia: troque LIGAR_GERAL pra "sim" lá embaixo.
 name: Postar achadinhos
-
+ 
 on:
   # Rodadas EXTRAS só do Black Friday (além das 5 do cron-job.org):
   # 10h30, 13h30, 17h30, 20h30 e 22h30 de Brasília (o GitHub usa horário UTC, +3h).
@@ -51,15 +51,15 @@ on:
         default: "agora"
         type: choice
         options: [agora, guardar]
-
+ 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
 concurrency:
   group: postar
   cancel-in-progress: false
-
+ 
 permissions:
   contents: write
-
+ 
 jobs:
   postar:
     runs-on: ubuntu-latest
@@ -79,7 +79,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-
+ 
       # ---------------- Perfil Ingrid (fitness) ----------------
       - name: Postar ofertas (Ingrid)
         if: env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'ingrid'
@@ -106,7 +106,7 @@ jobs:
           RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadoscasaedecor,achadosfitnessbr,achadosshopebrasil,guerradealsfit"
         run: python bot.py
-
+ 
       # ---------------- Perfil Geral (achadinhos em geral) ----------------
       # Segredos próprios terminados em _GERAL. Os que não existirem usam os da Ingrid
       # (Shopee, Amazon, Green-API e seu chat do Telegram podem ser os mesmos).
@@ -132,7 +132,7 @@ jobs:
           PALAVRAS: "organizador casa,utensilios cozinha,garrafa termica,kit ferramentas,luminaria led,mochila,perfume,brinquedo infantil,toalha de banho,jogo de cama,pote hermetico,kit maquiagem,tapete sala,mala de viagem,suporte celular"
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor"
         run: python bot.py
-
+ 
       # ---------------- Perfil Black Friday: só produtos com 40% OFF ou mais ----------------
       - name: Postar ofertas (Black Friday)
         if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'blackfriday') && env.TEM_BF == 'true'
@@ -161,8 +161,10 @@ jobs:
           LEMBRETE_PAINEL: "sim"    # avisa no Telegram quando tiver achado novo pra escolher
           RADAR_NICHO: "tudo"
           DESCONTO_GARIMPO: "25"    # só entra no garimpo o que tiver 25% OFF ou mais (Yuri ajustou em 25/10)
+          # 28/10 17h30: painel volta a mostrar todas as categorias; o Yuri escolhe o que vai pro grupo.
+          # (pra voltar a ser só eletro: CATEGORIAS_GARIMPO: "Eletrodomésticos,Eletrônicos")
           CATEGORIAS_PRIORIDADE: "Eletrodomésticos,Eletrônicos"   # eletrodomésticos saem primeiro
-          PRECO_MINIMO: "80"        # nada abaixo de R$ 80 (corta carregador, pilha, acessório barato)
+          # PRECO_MINIMO: "80"      # 28/10 18h: tirado, o Yuri escolhe tudo no painel
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           # Grupos de WhatsApp que o número do robô lê como fonte (formato Nome=codigo@g.us). Fica no segredo RADAR_GRUPOS_ZAP.
           RADAR_GRUPOS_ZAP: ${{ secrets.RADAR_GRUPOS_ZAP }}
@@ -170,10 +172,10 @@ jobs:
           # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10).
           # Eletro/casa: gtOFERTAS, promo_imperdivel, vrlofertas, ctofertaseletroetv (CT Ofertas Eletro e TV),
           # ofertas_harpyja (eletroportáteis Amazon), escolhasegura, cacadoresofertas, cupons_desconto (Promobit)
-          # 28/10: só canais fortes em eletro/eletrônicos (os de achadinho geral saíram). Fonte principal: grupo Eletro em Oferta.
-          RADAR_CANAIS: "ctofertaseletroetv,ofertas_harpyja,promo_imperdivel,vrlofertas,gtOFERTAS,escolhasegura,cacadoresofertas,nerdofertas,pelandobr,urubupromo,cupons_desconto"
+          # 28/10 18h: voltaram todos os canais (painel cheio; o Yuri escolhe o que vai pro grupo).
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor,guerradealsfit,nerdofertas,cuponsjersu,descontos_top,promocoesecuponsglobais,gtOFERTAS,promo_imperdivel,vrlofertas,ctofertaseletroetv,ofertas_harpyja,escolhasegura,cacadoresofertas,cupons_desconto"
         run: python bot.py
-
+ 
       - name: Guardar histórico (evita repetir oferta)
         if: always()
         run: |
@@ -190,7 +192,7 @@ jobs:
             git rebase --abort 2>/dev/null || true
             sleep $((i * 5))
           done
-
+ 
       # Atualiza a página e os painéis (repositório público "grupo").
       # Ingrid: raiz do site. Outros perfis: pasta com o nome do perfil (geral/, blackfriday/).
       # Só roda se o segredo PAGINA_TOKEN existir; se falhar, não atrapalha as postagens.
