@@ -931,11 +931,18 @@ def atualizar_painel(historico: dict) -> int:
             continue
         if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
             continue
-        adicionados += 1
         abrir = ""
         if o["loja"] == "Mercado Livre" and "meli.la" in o["link"] and ml_resolvidos < 30:
             ml_resolvidos += 1                  # link de outro afiliado: acha a página certa do produto
             abrir = radar.ml_pagina_do_produto(o["link"])
+        elif (o["loja"] == "Shopee" and not o.get("converter")
+              and re.search(r"s\.shopee\.com\.br|shope\.ee", o["link"]) and ml_resolvidos < 30):
+            ml_resolvidos += 1
+            tipo, abrir = radar.shopee_pagina_do_produto(o["link"])
+            if tipo == "campanha":              # link leva pra página de cupom, não pro produto: preço não dá pra confiar
+                print(f"[painel] fora (link da Shopee é de campanha): {o['nome'][:50]}")
+                continue
+        adicionados += 1
         if not o.get("imagem") and fotos_buscadas < 25:
             fotos_buscadas += 1                 # post do canal sem foto: busca a foto do produto
             try:

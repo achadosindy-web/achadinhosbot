@@ -367,6 +367,21 @@ def ml_pagina_do_produto(url: str) -> str:
     return ""
 
 
+def shopee_pagina_do_produto(url: str) -> tuple[str, str]:
+    """Link curto da Shopee de outro canal. Muitos levam pra página de CUPOM/campanha, não pro produto.
+    Devolve ("produto", url limpa) | ("campanha", "") | ("erro", "")."""
+    try:
+        final = requests.get(url, headers=UA_NAV, timeout=8, allow_redirects=True).url
+    except Exception:
+        return "erro", ""
+    caminho = final.split("?")[0].split("#")[0]
+    if not re.search(r"shopee\.com\.br", caminho):
+        return "erro", ""
+    if re.search(r"-i\.\d+\.\d+$|/product/\d+/\d+$|shopee\.com\.br/[^/]+/\d+/\d+$", caminho):
+        return "produto", caminho
+    return "campanha", ""
+
+
 def link_nosso(asin: str) -> str:
     return f"https://www.amazon.com.br/dp/{asin}" + (f"?tag={AMAZON_TAG}" if AMAZON_TAG else "")
 
@@ -405,7 +420,7 @@ def precos(texto: str) -> tuple[float, float]:
 
 
 # Linhas que são instrução ou propaganda de loja, não o nome do produto
-_NAO_E_NOME = (r"o pre[cç]o ajusta|m[eé]todo de pagamento|oferta regional|verifique se|dispon[ií]vel pra voc[eê]|"
+_NAO_E_NOME = (r"pode esgotar|esgota r[aá]pido|[eé] espetacular|o desconto [eé] aplicado|o pre[cç]o ajusta|m[eé]todo de pagamento|oferta regional|verifique se|dispon[ií]vel pra voc[eê]|"
                r"ative aqui|pesquise|loja oficial|no an[uú]ncio|localize|clique|toque|acesse|copie|cole |"
                r"outras op[cç][oõ]es|selecione|programe e poupe|cancele quando|resgate|aplique|"
                r"v[aá]lido|promo[cç][aã]o rel[aâ]mpago|corre que|acabou de baixar|baixou|menor pre[cç]o|"
