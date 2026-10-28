@@ -167,7 +167,11 @@
   "dc2180",
   "738c83",
   "96edec",
-  "30c9e0"
+  "30c9e0",
+  "5373a7",
+  "34c647",
+  "e38ff3",
+  "1e95e1"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
  "_tg_offset": 808290567,
@@ -463,7 +467,7 @@
  "tipo-camiseta": 1793059417.5029364,
  "radar-B0CDCMT8FY": 1793059460.5309982,
  "nome-lactabislakachocolatebrancokit3unidades1": 1793059460.5310032,
- "tipo-lacta": 1793059460.5314865,
+ "tipo-lacta": 1793146746.1623626,
  "radar-B0HFNZP4JX": 1793059504.693295,
  "nome-pok\u00e9montcgcelebra\u00e7\u00e3ode30anosboxpok\u00e9monco": 1793059504.6932993,
  "tipo-pok\u00e9mon": 1793059504.6938179,
@@ -573,5 +577,16 @@
  "tipo-protein": 1793145962.734151,
  "radar-B07X4GVF9H": 1793145995.11865,
  "nome-fraldapamperssupersequinhagcom80unidades": 1793145995.1186543,
- "tipo-fralda": 1793145995.1191213
+ "tipo-fralda": 1793145995.1191213,
+ "radar-B0D6NJCK5G": 1793146611.6716967,
+ "nome-jblfonedeouvidocomfiojblquantum100m2head": 1793146611.6717005,
+ "tipo-jbl": 1793146611.672144,
+ "radar-B07RJYGPR1": 1793146655.0079324,
+ "nome-gladearomatizadordeambientelavanda360ml": 1793146655.0079365,
+ "tipo-glade": 1793146655.0084455,
+ "radar-B0C3SM52XX": 1793146696.0161054,
+ "nome-vichydercosenergyrefilestimulanteantique": 1793146696.0161102,
+ "tipo-vichy": 1793146696.0165982,
+ "radar-B0DM6M3V28": 1793146746.1618514,
+ "nome-lactaoreowaferrecheadosaborchocolatepaco": 1793146746.1618557
 }
