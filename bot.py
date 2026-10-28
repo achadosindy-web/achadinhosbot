@@ -90,6 +90,8 @@ DESCONTO_GARIMPO = int(os.getenv("DESCONTO_GARIMPO", "0"))
 #   CATEGORIAS_GARIMPO = só essas entram  |  CATEGORIAS_FORA = essas não entram
 CATEGORIAS_GARIMPO = {c.strip().lower() for c in os.getenv("CATEGORIAS_GARIMPO", "").split(",") if c.strip()}
 CATEGORIAS_FORA = {c.strip().lower() for c in os.getenv("CATEGORIAS_FORA", "").split(",") if c.strip()}
+# Preço mínimo para entrar no garimpo e sair no automático (0 = sem mínimo). Evita "besteirinha".
+PRECO_MINIMO = float(os.getenv("PRECO_MINIMO", "0") or 0)
 # Modo "automatico": só posta sozinho achados do garimpo com até tantas horas (preço ainda fresco)
 AUTO_HORAS = float(os.getenv("AUTO_HORAS", "6"))
 # Categorias que saem primeiro quando há mais achados do que vagas na rodada (ex.: Black Friday)
@@ -275,8 +277,10 @@ def montar_mensagem(o: dict) -> str:
         linhas.append(f"❌ De {brl(antes)}")
     linhas.append(f"✅ Por {brl(o['preco'])}" +
                   (f"  ({o['desconto']}% OFF)" if o["desconto"] else ""))
-    if o.get("cupom"):
-        linhas.append(f"🎟️ Cupom: {o['cupom']}")
+    if o.get("cupom") == "na página do produto":
+        linhas.append("🎟️ Tem cupom na página: pode sair ainda mais barato")
+    elif o.get("cupom"):
+        linhas.append(f"🎟️ Cupom extra: {o['cupom']} (o preço acima é sem cupom)")
     if o["vendas"] >= 1000:
         linhas.append(f"⭐ {o['nota']:.1f}".replace(".", ",") + " • +"
                       f"{o['vendas']//1000} mil vendidos")
@@ -487,14 +491,16 @@ def foto_boa(o: dict) -> tuple[str | None, bytes | None]:
         og = imagem_do_link(o["link"])
         if og:
             candidatas.append(og)
-    if o.get("imagem"):
+    # A foto que veio do canal só entra em oferta aprovada por vocês: nas automáticas ela
+    # costuma ter a marca do concorrente (ex.: "Nerd Ofertas") estampada.
+    if o.get("imagem") and not o.get("radar"):
         candidatas.append(o["imagem"])
     for c in candidatas:
         b = _imagem_bytes(c)
         if _foto_valida(b):
             return c, b
     print(f"[aviso] não achei foto boa para: {o['nome'][:50]}")
-    return o.get("imagem"), None
+    return (None if o.get("radar") else o.get("imagem")), None
 
 
 def foto_do_produto(o: dict):
@@ -769,11 +775,12 @@ def _por_na_fila(oferta: dict, existentes: set) -> bool:
     return True
 
 
-def oferta_do_formulario() -> int:
-    """Oferta preenchida no formulário "Postar algo que vi" do painel (chega pelo GitHub)."""
+def oferta_do_formulario() -> str:
+    """Oferta preenchida no formulário "Postar algo que vi" do painel (chega pelo GitHub).
+    Devolve o link (já com a tag de vocês) que ficou na fila, ou "" se não entrou nada."""
     link = os.getenv("OFERTA_LINK", "").strip()
     if not link:
-        return 0
+        return ""
     nome = os.getenv("OFERTA_NOME", "").strip()
     preco = os.getenv("OFERTA_PRECO", "").strip()
     antes = os.getenv("OFERTA_PRECO_ANTES", "").strip()
@@ -784,15 +791,15 @@ def oferta_do_formulario() -> int:
         print(f"[formulário] não deu pra postar: {problema}")
         for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
             _responder(chat, f"⚠️ A oferta do painel não saiu: {problema}.")
-        return 0
+        return ""
     existentes = set()
     if OFERTAS_MANUAIS.exists():
         existentes = {l.get("link", "").strip() for l in csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8"))}
     if not _por_na_fila(oferta, existentes):
         print("[formulário] essa oferta já estava na fila.")
-        return 0
+        return oferta["link"]
     print(f"[formulário] na fila: {oferta['produto']} ({oferta['loja']})")
-    return 1
+    return oferta["link"]
 
 
 def _radar_para_fila(o: dict) -> dict:
@@ -921,6 +928,8 @@ def atualizar_painel(historico: dict) -> int:
         cat = (o.get("categoria") or "Outros").lower()
         if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
             continue
+        if PRECO_MINIMO and (o.get("preco") or 0) < PRECO_MINIMO:
+            continue
         adicionados += 1
         if not o.get("imagem") and fotos_buscadas < 25:
             fotos_buscadas += 1                 # post do canal sem foto: busca a foto do produto
@@ -955,6 +964,29 @@ def atualizar_painel(historico: dict) -> int:
     return adicionados
 
 
+LEMBRETE_PAINEL = os.getenv("LEMBRETE_PAINEL", "").strip().lower() in ("1", "sim", "true")
+PAINEL_URL = os.getenv("PAINEL_URL", "https://achadosindy-web.github.io/grupo/painel.html").strip()
+
+
+def lembrar_do_painel(novos: int) -> None:
+    """Manda no Telegram um resumo dos melhores achados novos, pra você escolher o que postar."""
+    itens = [i for i in _ler_garimpo().get("itens", []) if not i.get("aprovado")]
+    itens.sort(key=lambda i: (i.get("achado_em", ""), int(i.get("desconto") or 0)), reverse=True)
+    top = sorted(itens[:max(novos, 5)], key=lambda i: -int(i.get("desconto") or 0))[:5]
+    linhas = [f"🔔 {novos} achado(s) novo(s) de eletro no painel da Black Friday", ""]
+    for i in top:
+        linhas.append(f"• {i['nome'][:60]}\n   {brl(float(i['preco']))}"
+                      + (f" ({int(i['desconto'])}% OFF)" if i.get("desconto") else "")
+                      + f" · {i.get('loja', '')}")
+    linhas += ["", "Escolha o que vai pro grupo (aba Black Friday):", PAINEL_URL]
+    texto = "\n".join(linhas)
+    for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+        try:
+            telegram(chat, texto, None)
+        except Exception as e:
+            print(f"[aviso] não consegui mandar o lembrete para {chat}: {e} (mande /start pro robô)")
+
+
 def chave_nome(nome: str) -> str:
     return "nome-" + re.sub(r"\W+", "", (nome or "").lower())[:40]
 
@@ -987,6 +1019,13 @@ def ofertas_do_garimpo(historico: dict) -> list[dict]:
             continue
         if historico.get(chave_nome(i.get("nome")), 0) > time.time() - DIAS_SEM_REPETIR * 86400:
             continue   # mesmo produto já foi postado com outro link
+        cat = (i.get("categoria") or "Outros").lower()
+        if (CATEGORIAS_GARIMPO and cat not in CATEGORIAS_GARIMPO) or cat in CATEGORIAS_FORA:
+            continue   # achado antigo de categoria que não vai mais pra esse grupo
+        if PRECO_MINIMO and float(i.get("preco") or 0) < PRECO_MINIMO:
+            continue
+        if DESCONTO_GARIMPO and int(i.get("desconto") or 0) < DESCONTO_GARIMPO:
+            continue
         try:
             if datetime.fromisoformat(i.get("achado_em") or i.get("quando")) < limite:
                 continue
@@ -1159,77 +1198,17 @@ def registrar_vitrine(o: dict) -> None:
 
 
 # ------------------------------- Principal -----------------------------------
-def main() -> None:
-    teste = "--teste" in sys.argv
-    historico = carregar_historico()
-    if not teste:
-        try:
-            n = ler_caixa_do_bot(historico)
-            if n:
-                print(f"{n} oferta(s) nova(s) recebida(s) pelo Telegram.")
-        except Exception as e:
-            print(f"[aviso] não consegui ler as mensagens do bot: {e}")
-        salvar_historico(historico)
-        try:
-            oferta_do_formulario()
-        except Exception as e:
-            print(f"[aviso] formulário do painel: {e}")
-    ofertas = ler_manuais()
-
-    if RADAR_MODO == "auto":
-        try:
-            achadas = [o for o in radar.buscar(set(historico)) if o.get("converter")]
-            print(f"[radar] {len(achadas)} oferta(s) da Amazon prontas pra postar.")
-            ofertas += achadas
-        except Exception as e:
-            print(f"[aviso] radar falhou: {e}")
-    elif RADAR_MODO == "automatico":
-        # Atualiza o painel e posta sozinho o que já tem o link de vocês.
-        # O que precisa de link manual (Mercado Livre) continua no painel pra aprovar.
-        if not teste:
-            try:
-                n = atualizar_painel(historico)
-                print(f"[painel] {n} achado(s) novo(s) no painel do garimpo.")
-                salvar_historico(historico)
-            except Exception as e:
-                print(f"[aviso] painel falhou: {e}")
-        auto = ofertas_do_garimpo(historico)
-        print(f"[auto] {len(auto)} achado(s) do garimpo prontos pra postar sozinhos.")
-        ofertas += auto
-    elif RADAR_MODO == "painel" and not teste:
-        try:
-            n = atualizar_painel(historico)
-            print(f"[painel] {n} achado(s) novo(s) no painel do garimpo.")
-            salvar_historico(historico)
-        except Exception as e:
-            print(f"[aviso] painel falhou: {e}")
-    elif RADAR_MODO == "aprovar" and not teste:
-        try:
-            n = sugerir_radar(historico)
-            print(f"[radar] {n} sugestão(ões) enviada(s) para aprovação.")
-            salvar_historico(historico)
-        except Exception as e:
-            print(f"[aviso] radar falhou: {e}")
-
-    if SHOPEE_APP_ID and SHOPEE_SECRET and RADAR_MODO == "auto":
-        for palavra in random.sample(PALAVRAS, k=min(3, len(PALAVRAS))):
-            try:
-                ofertas += shopee_buscar(palavra)
-            except Exception as e:  # uma palavra falhar nao derruba o resto
-                print(f"[aviso] Shopee '{palavra}': {e}")
-    if not ofertas:
-        print("Nenhuma oferta aprovada na fila (ofertas.csv). Nada a postar.")
-        return
-
-    escolhidas = escolher(ofertas, historico)
-    if not escolhidas:
-        print("Nenhuma oferta passou nos filtros desta vez.")
-        return
-
+def postar_lista(escolhidas: list[dict], historico: dict, teste: bool = False) -> None:
     for o in escolhidas:
         foto_bytes = None
         if not teste:
             o["imagem"], foto_bytes = foto_boa(o)
+            if o.get("radar") and not foto_bytes:
+                print(f"[pulei] sem foto oficial (evita foto com marca de outro canal): {o['nome'][:60]}")
+                continue
+            if o.get("desconto", 0) >= 90:
+                print(f"[pulei] desconto de {o['desconto']}% não é crível: {o['nome'][:60]}")
+                continue
         msg = montar_mensagem(o)
         print("=" * 50 + "\n" + msg + "\n")
         if teste:
@@ -1279,8 +1258,92 @@ def main() -> None:
 
     if not teste:
         salvar_historico(historico)
-    print(f"{len(escolhidas)} oferta(s) {'simulada(s)' if teste else 'postada(s)'} "
-          f"em {datetime.now(BR):%d/%m %H:%M}.")
+    print(f"{len(escolhidas)} oferta(s) {'simulada(s)' if teste else 'postada(s)'} em {datetime.now(BR):%d/%m %H:%M}.")
+
+
+def main() -> None:
+    teste = "--teste" in sys.argv
+    historico = carregar_historico()
+    if not teste:
+        try:
+            n = ler_caixa_do_bot(historico)
+            if n:
+                print(f"{n} oferta(s) nova(s) recebida(s) pelo Telegram.")
+        except Exception as e:
+            print(f"[aviso] não consegui ler as mensagens do bot: {e}")
+        salvar_historico(historico)
+        link_form = ""
+        try:
+            link_form = oferta_do_formulario()
+        except Exception as e:
+            print(f"[aviso] formulário do painel: {e}")
+        modo_form = os.getenv("OFERTA_MODO", "agora").strip().lower() or "agora"
+        if os.getenv("OFERTA_LINK", "").strip():
+            if modo_form == "guardar":
+                print("[formulário] guardado na fila; sai no próximo horário do robô. Nada postado agora.")
+                return
+            if not link_form:
+                return            # o formulário não deu certo: não posta a fila junto
+            # "Postar só este agora": sai SÓ o produto do formulário; a fila espera o horário dela
+            so_este = [o for o in ler_manuais() if o["link"] == link_form]
+            if so_este:
+                postar_lista(so_este, historico, teste)
+            return
+    ofertas = ler_manuais()
+
+    if RADAR_MODO == "auto":
+        try:
+            achadas = [o for o in radar.buscar(set(historico)) if o.get("converter")]
+            print(f"[radar] {len(achadas)} oferta(s) da Amazon prontas pra postar.")
+            ofertas += achadas
+        except Exception as e:
+            print(f"[aviso] radar falhou: {e}")
+    elif RADAR_MODO == "automatico":
+        # Atualiza o painel e posta sozinho o que já tem o link de vocês.
+        # O que precisa de link manual (Mercado Livre) continua no painel pra aprovar.
+        if not teste:
+            try:
+                n = atualizar_painel(historico)
+                print(f"[painel] {n} achado(s) novo(s) no painel do garimpo.")
+                salvar_historico(historico)
+            except Exception as e:
+                print(f"[aviso] painel falhou: {e}")
+        auto = ofertas_do_garimpo(historico)
+        print(f"[auto] {len(auto)} achado(s) do garimpo prontos pra postar sozinhos.")
+        ofertas += auto
+    elif RADAR_MODO == "painel" and not teste:
+        try:
+            n = atualizar_painel(historico)
+            print(f"[painel] {n} achado(s) novo(s) no painel do garimpo.")
+            salvar_historico(historico)
+            if n and LEMBRETE_PAINEL:
+                lembrar_do_painel(n)
+        except Exception as e:
+            print(f"[aviso] painel falhou: {e}")
+    elif RADAR_MODO == "aprovar" and not teste:
+        try:
+            n = sugerir_radar(historico)
+            print(f"[radar] {n} sugestão(ões) enviada(s) para aprovação.")
+            salvar_historico(historico)
+        except Exception as e:
+            print(f"[aviso] radar falhou: {e}")
+
+    if SHOPEE_APP_ID and SHOPEE_SECRET and RADAR_MODO == "auto":
+        for palavra in random.sample(PALAVRAS, k=min(3, len(PALAVRAS))):
+            try:
+                ofertas += shopee_buscar(palavra)
+            except Exception as e:  # uma palavra falhar nao derruba o resto
+                print(f"[aviso] Shopee '{palavra}': {e}")
+    if not ofertas:
+        print("Nenhuma oferta aprovada na fila (ofertas.csv). Nada a postar.")
+        return
+
+    escolhidas = escolher(ofertas, historico)
+    if not escolhidas:
+        print("Nenhuma oferta passou nos filtros desta vez.")
+        return
+
+    postar_lista(escolhidas, historico, teste)
 
 
 if __name__ == "__main__":

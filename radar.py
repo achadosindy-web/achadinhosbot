@@ -21,7 +21,9 @@ GRUPOS_ZAP = [g.strip() for g in os.getenv("RADAR_GRUPOS_ZAP", "").split(",") if
 # O plano grátis do Green-API deixa ler o histórico 300 vezes por mês: o robô só lê nas
 # rodadas "cheias" (9h, 12h, 15h, 19h e 21h), que dá ~155 leituras por grupo no mês.
 HORAS_LER_ZAP = {int(h) for h in os.getenv("RADAR_ZAP_HORAS", "9,12,15,19,21").split(",") if h.strip()}
-HORAS_MAX = float(os.getenv("RADAR_HORAS", "12"))      # ignora posts mais velhos que isso
+HORAS_MAX = float(os.getenv("RADAR_HORAS", "12"))
+# Acima disso o desconto é tratado como suspeito (cupom, parcela ou erro do canal) e conferido
+DESCONTO_SUSPEITO = int(os.getenv("DESCONTO_SUSPEITO", "70"))      # ignora posts mais velhos que isso
 UA = {"User-Agent": "Mozilla/5.0 (compatible; AchadinhosBot/1.0)"}
 
 # ----------------------------- Nicho: roupas fitness ---------------------------
@@ -35,10 +37,10 @@ _CATEGORIAS = [
     ("Bebê", r"fralda|len[cç]o umedecido|mamadeira|chupeta|carrinho de beb|beb[eê] conforto|ber[cç]o|body infantil|pomada para assadura"),
     ("Fitness", r"fitness|academia|treino|legging|esportiv|dry ?fit|compress[aã]o|yoga|pilates|corrida|whey|creatina|halter|top esportivo"),
     ("Beleza", r"perfume|maquiag|batom|base l[ií]quida|s[eé]rum|hidratante|shampoo|condicionador|creme|skin ?care|protetor solar|esmalte|secador|chapinha|escova alisadora|cabelo"),
-    ("Eletrodomésticos", r"air ?fryer|fritadeira|liquidificador|batedeira|mixer|processador de alimentos|multiprocessador|cafeteira|espresso|nespresso|dolce gusto|chaleira el[eé]trica|sanduicheira|grill|forno el[eé]trico|micro-?ondas|geladeira|refrigerador|freezer|frigobar|fog[aã]o|cooktop|coifa|depurador|lava[- ]?lou[cç]as|m[aá]quina de lavar|lavadora|lava e seca|secadora|tanquinho|aspirador|rob[oô] aspirador|ventilador|climatizador|ar[- ]condicionado|purificador|bebedouro|ferro de passar|vaporizador|panela el[eé]trica|panela de press[aã]o el[eé]trica|panela de arroz|torradeira|pipoqueira|iogurteira|adega"),
+    ("Eletrodomésticos", r"air ?fryer|fritadeira|liquidificador|batedeira|mixer|processador de alimentos|multiprocessador|cafeteira|espresso|nespresso|dolce gusto|chaleira el[eé]trica|sanduicheira|grill|forno el[eé]trico|micro-?ondas|geladeira|refrigerador|freezer|frigobar|fog[aã]o|cooktop|coifa|depurador|lava[- ]?lou[cç]as|m[aá]quina de lavar|lavadora|lava e seca|secadora|tanquinho|aspirador|rob[oô] aspirador|ventilador|climatizador|ar[- ]condicionado|purificador|bebedouro|ferro de passar|vaporizador|panela el[eé]trica|panela de press[aã]o el[eé]trica|panela de arroz|torradeira|pipoqueira|iogurteira|adega|aquecedor|termoventilador|umidificador|desumidificador|secadora de roupa|m[aá]quina de caf[eé]|sorveteira|panela de press[aã]o|mini ?forno|forno de embutir|lavadora de alta press[aã]o|wap |l[aá]mpada inteligente"),
     ("Casa", r"cozinha|panela|frigideira|organizador|pote|toalha|len[cç]ol|travesseiro|edredom|cortina|tapete|mop|vassoura|lumin[aá]ria|decora|copo|caneca|garrafa t[eé]rmica|chaleira|forno|limpeza|lava"),
     ("Moda", r"camiseta|camisa|vestido|cal[cç]a|bermuda|short|saia|blusa|jaqueta|moletom|t[eê]nis|sand[aá]lia|chinelo|bolsa|mochila|carteira|rel[oó]gio|[oó]culos|cueca|calcinha|suti[aã]|meia|bon[eé]"),
-    ("Eletrônicos", r"fone|celular|smartphone|iphone|galaxy|xiaomi|notebook|tablet|\btv\b|smart ?tv|monitor|carregador|power ?bank|caixa de som|alexa|echo|kindle|ssd|mouse|teclado|headset|smartwatch|playstation|xbox|nintendo|game"),
+    ("Eletrônicos", r"fone|headphone|earbud|soundbar|home theater|projetor|c[aâ]mera|drone|celular|smartphone|iphone|galaxy|xiaomi|notebook|tablet|\btv\b|smart ?tv|monitor|carregador|power ?bank|caixa de som|alexa|echo|kindle|ssd|mouse|teclado|headset|smartwatch|playstation|xbox|nintendo|game"),
 ]
 
 
@@ -230,6 +232,55 @@ def desconto_na_amazon(asin: str) -> tuple[float, float, int] | None:
     return preco, antes, pct
 
 
+def preco_na_amazon(asin: str) -> tuple[float, int] | None:
+    """Preço que a página da Amazon mostra AGORA (sem cupom) e o -XX% dela (0 se não tiver)."""
+    try:
+        r = requests.get(f"https://www.amazon.com.br/dp/{asin}", headers=UA_NAV, timeout=20)
+    except Exception:
+        return None
+    h = r.text if r.ok else ""
+    if not h or "captcha" in h.lower()[:20000] or "api-services-support@amazon" in h:
+        return None
+    fotos = _fotos_da_pagina(h)
+    if fotos:
+        _foto_lida[asin] = fotos[0]
+    m_preco = re.search(r'class="a-price-whole">([\d.]+)<', h)
+    if not m_preco:
+        return None
+    m_cent = re.search(r'class="a-price-fraction">(\d{2})<', h)
+    preco = float(m_preco.group(1).replace(".", "") + "." + (m_cent.group(1) if m_cent else "00"))
+    m_pct = re.search(r'savingsPercentage[^>]*>\s*-?\s*(\d{1,2})\s*%', h)
+    return preco, int(m_pct.group(1)) if m_pct else 0
+
+
+def preco_da_pagina(url: str) -> float:
+    """Preço da página do produto (Mercado Livre, Shopee e outras), sem cupom. 0 se não achar."""
+    try:
+        r = requests.get(url, headers=UA_NAV, timeout=20, allow_redirects=True)
+        h = r.text if r.ok else ""
+    except Exception:
+        return 0.0
+    for padrao in (r'itemprop="price"\s+content="([\d.]+)"',
+                   r'property="product:price:amount"\s+content="([\d.]+)"',
+                   r'"price"\s*:\s*"?([\d]+(?:\.\d{1,2})?)"?'):
+        m = re.search(padrao, h)
+        if m:
+            try:
+                v = float(m.group(1))
+                if v > 0:
+                    return v
+            except ValueError:
+                pass
+    return 0.0
+
+
+_TEM_CUPOM = re.compile(r"\bcup(?:om|on|ons|ons)\b|c[oó]digo promocional|aplique o|resgate o", re.I)
+
+
+def tem_cupom(texto: str) -> bool:
+    return bool(_TEM_CUPOM.search(texto or ""))
+
+
 _foto_lida: dict[str, str] = {}      # asin -> foto achada na página (reaproveita a visita do desconto)
 
 
@@ -339,7 +390,8 @@ def precos(texto: str) -> tuple[float, float]:
 
 
 # Linhas que são instrução ou propaganda de loja, não o nome do produto
-_NAO_E_NOME = (r"ative aqui|pesquise|loja oficial|no an[uú]ncio|localize|clique|toque|acesse|copie|cole |"
+_NAO_E_NOME = (r"o pre[cç]o ajusta|m[eé]todo de pagamento|oferta regional|verifique se|dispon[ií]vel pra voc[eê]|"
+               r"ative aqui|pesquise|loja oficial|no an[uú]ncio|localize|clique|toque|acesse|copie|cole |"
                r"outras op[cç][oõ]es|selecione|programe e poupe|cancele quando|resgate|aplique|"
                r"v[aá]lido|promo[cç][aã]o rel[aâ]mpago|corre que|acabou de baixar|baixou|menor pre[cç]o|"
                r"hist[oó]rico|entre no grupo|siga|compartilhe|vendido por|entregue por|^⚠|^❗|^📌")
@@ -386,7 +438,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
     Mercado Livre/Shopee: volta como garimpo (converter=False), pra vocês gerarem o link no app."""
     agora = datetime.now(timezone.utc)
     achadas, vistos_aqui = [], set()
-    total = recentes = fitness = sem_preco = repetidos = 0
+    total = recentes = fitness = sem_preco = repetidos = suspeitos = cupom_sem_preco = 0
     ex_sem_preco, ex_sem_link = [], []
     por_loja: dict[str, int] = {}
     saltos_restantes = 400                      # limite de links desconhecidos seguidos por rodada
@@ -449,6 +501,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
             nome = nome_produto(p["texto"])
             if not nome:
                 continue                      # post de cupom/aviso, sem produto
+            com_cupom = tem_cupom(p["texto"])
             base = {
                 "loja": loja,
                 "nome": nome,
@@ -457,7 +510,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                 "desconto": round((1 - preco / antes) * 100) if antes > preco else 0,
                 "comissao": 0, "vendas": 0, "nota": 5,
                 "imagem": p["foto"],
-                "cupom": cupom(p["texto"]),
+                "cupom": cupom(p["texto"]) or ("na página do produto" if tem_cupom(p["texto"]) else ""),
                 "radar": True,
                 "fonte": f"@{canal}",
                 "categoria": "Fitness" if e_roupa_fitness(p["texto"]) else categoria(p["texto"]),
@@ -480,16 +533,50 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
                     repetidos += 1
                     continue
                 base.update(id=f"radar-{asin}", link=link_nosso(asin), converter=True)
-                if CHECAR_AMAZON and not base["desconto"] and _amazon_checadas["ok"] + _amazon_checadas["sem_desconto"] < 60:
+                if com_cupom:
+                    # O preço do post é COM cupom; o cliente vê o preço cheio na página.
+                    lido = preco_na_amazon(asin)
+                    if not lido:
+                        cupom_sem_preco += 1
+                        continue
+                    preco_pag, pct_pag = lido
+                    antes = base["preco_antes"] if base["preco_antes"] > preco_pag else 0
+                    if pct_pag and 0 < pct_pag < 100:
+                        antes = round(preco_pag / (1 - pct_pag / 100), 2)
+                    base.update(preco=preco_pag, preco_antes=antes,
+                                desconto=round((1 - preco_pag / antes) * 100) if antes > preco_pag else 0)
+                elif CHECAR_AMAZON and not base["desconto"] and _amazon_checadas["ok"] + _amazon_checadas["sem_desconto"] < 60:
                     achado = desconto_na_amazon(asin)
                     if achado:
                         base.update(preco=achado[0], preco_antes=achado[1], desconto=achado[2])
+                if not com_cupom and base["desconto"] >= DESCONTO_SUSPEITO:
+                    # Desconto bom demais (ex.: iPhone de R$ 12.599 por R$ 1.000): o post do canal
+                    # costuma ter cupom, parcela ou erro. Só passa se a página da Amazon confirmar.
+                    achado = desconto_na_amazon(asin)
+                    if achado and achado[2] < 90:
+                        base.update(preco=achado[0], preco_antes=achado[1], desconto=achado[2])
+                    else:
+                        suspeitos += 1
+                        print(f"[radar] desconto suspeito descartado ({base['desconto']}%): {base['nome'][:60]}")
+                        continue
                 if not base["preco"]:
                     sem_preco += 1            # nem o post nem a página da Amazon deram o preço
                     continue
                 if asin in _foto_lida:
                     base["imagem"] = _foto_lida[asin]   # foto oficial, sem logo de outro canal
             else:
+                if com_cupom:
+                    preco_pag = preco_da_pagina(alvo)
+                    if not preco_pag:
+                        cupom_sem_preco += 1
+                        continue
+                    antes = base["preco_antes"] if base["preco_antes"] > preco_pag else 0
+                    base.update(preco=preco_pag, preco_antes=antes,
+                                desconto=round((1 - preco_pag / antes) * 100) if antes > preco_pag else 0)
+                if base["desconto"] >= DESCONTO_SUSPEITO:
+                    suspeitos += 1
+                    print(f"[radar] desconto suspeito fora do painel ({base['desconto']}%): {base['nome'][:60]}")
+                    continue
                 chave = "garimpo-" + re.sub(r"\W+", "", base["nome"].lower())[:40]
                 if chave in ja_vistos or chave in vistos_aqui:
                     repetidos += 1
@@ -500,7 +587,7 @@ def buscar(ja_vistos: set[str], nicho: str | None = None) -> list[dict]:
         time.sleep(1)
     print(f"[radar] resumo: {total} posts, {recentes} recentes (<{HORAS_MAX:g}h), "
           f"{fitness} no nicho ({nicho or 'fitness'}); por loja: {por_loja}; sem preço: {sem_preco}; "
-          f"repetidos/já no painel: {repetidos}; aproveitáveis: {len(achadas)}")
+          f"repetidos/já no painel: {repetidos}; suspeitos: {suspeitos}; com cupom sem preço da página: {cupom_sem_preco}; aproveitáveis: {len(achadas)}")
     if CHECAR_AMAZON:
         print(f"[radar] desconto lido na página da Amazon: {_amazon_checadas}")
     for e in ex_sem_preco:
