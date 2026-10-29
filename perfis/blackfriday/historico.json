@@ -200,10 +200,13 @@
   "788c12",
   "06c51f",
   "9fd385",
-  "408d96"
+  "408d96",
+  "eaa2f5",
+  "ac23e8",
+  "c07578"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290576,
+ "_tg_offset": 808290579,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -409,7 +412,7 @@
  "tipo-parafusadeira": 1793027558.7025716,
  "radar-B09XJL4B9H": 1793027602.7388713,
  "nome-kit12potesherm\u00e9ticoselectroluxctampa": 1793027602.7388763,
- "tipo-pote": 1793113831.1578057,
+ "tipo-pote": 1793234149.708235,
  "radar-B0CW976R89": 1793028139.05664,
  "nome-fechaduradigitaldesobreporaberturaporsen": 1793028139.0566442,
  "tipo-fechadura": 1793028139.0570877,
@@ -697,5 +700,13 @@
  "tipo-colch\u00e3o": 1793224659.5495038,
  "manual-15c66cea12": 1793224691.277294,
  "nome-merttosmartwatchfonedeouvidobluetoothemo": 1793224691.2773001,
- "tipo-mertto": 1793224691.277943
+ "tipo-mertto": 1793224691.277943,
+ "manual-eb4477da78": 1793234067.1531405,
+ "nome-kitcom10paresmeiasmashinvis\u00edvel": 1793234067.1531458,
+ "tipo-meia": 1793234067.1537688,
+ "manual-b59da12138": 1793234099.94056,
+ "nome-jogocom6ta\u00e7asvidrodiamond340ml": 1793234099.9405653,
+ "tipo-ta\u00e7a": 1793234099.9410746,
+ "manual-531497c700": 1793234149.7077472,
+ "nome-kit10potedevidromarmitaherm\u00e9tico370mlfre": 1793234149.707752
 }
