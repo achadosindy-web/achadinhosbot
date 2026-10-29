@@ -207,10 +207,13 @@
   "300923",
   "91fc4e",
   "b9d6c9",
-  "757636"
+  "757636",
+  "e22fe5",
+  "1979f3",
+  "c8e3a8"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290583,
+ "_tg_offset": 808290586,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -416,7 +419,7 @@
  "tipo-parafusadeira": 1793027558.7025716,
  "radar-B09XJL4B9H": 1793027602.7388713,
  "nome-kit12potesherm\u00e9ticoselectroluxctampa": 1793027602.7388763,
- "tipo-pote": 1793234149.708235,
+ "tipo-pote": 1793289423.7695851,
  "radar-B0CW976R89": 1793028139.05664,
  "nome-fechaduradigitaldesobreporaberturaporsen": 1793028139.0566442,
  "tipo-fechadura": 1793028139.0570877,
@@ -727,5 +730,13 @@
  "tipo-capa": 1793276248.799616,
  "manual-4654e1aac0": 1793276297.6200416,
  "nome-cafeteiratrescora\u00e7\u00f5eslovautom\u00e1tica": 1793276297.6200473,
- "tipo-cafeteira": 1793276297.6202095
+ "tipo-cafeteira": 1793276297.6202095,
+ "manual-79b30730bf": 1793289389.5366144,
+ "nome-kit2cobertorcasalmantamantinhacobertores": 1793289389.5366187,
+ "tipo-cobertor": 1793289389.5372074,
+ "manual-0f6121b1b1": 1793289423.7690628,
+ "nome-kitcom3potesherm\u00e9tico1040mlcomdivis\u00f3ria": 1793289423.7690673,
+ "manual-76cf8f8aa8": 1793289451.9619691,
+ "nome-pipoqueirapocinepp02vermelhocomdosador12": 1793289451.9619737,
+ "tipo-pipoqueira": 1793289451.9624646
 }
