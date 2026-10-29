@@ -182,6 +182,7 @@ def ler_manuais() -> list[dict]:
                 "imagem": (l.get("imagem") or "").strip() or None,
                 "link": l["link"].strip(),
                 "cupom": (l.get("cupom") or "").strip(),
+                "quando": (l.get("quando") or "").strip(),   # "2026-10-29T19:00" = programado; vazio = próximo horário
                 "manual": True,
             })
     return ofertas
@@ -761,11 +762,72 @@ def _responder(chat, texto):
         pass
 
 
+CAMPOS_FILA = ["loja", "produto", "preco", "preco_antes", "cupom", "link", "imagem", "postado", "quando"]
+
+
+def _campos_da_fila() -> list[str]:
+    """Cabeçalho do ofertas.csv. Se o arquivo é de antes da coluna 'quando', reescreve com ela."""
+    if not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0:
+        return CAMPOS_FILA
+    with open(OFERTAS_MANUAIS, encoding="utf-8") as f:
+        leitor = csv.DictReader(f)
+        campos = list(leitor.fieldnames or [])
+        linhas = list(leitor)
+    faltam = [c for c in CAMPOS_FILA if c not in campos]
+    if faltam:
+        campos += faltam
+        with open(OFERTAS_MANUAIS, "w", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=campos, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(linhas)
+    return campos
+
+
+def quando_do_horario(hora) -> str:
+    """Hora escolhida (9, 12, 15, 19, 21) -> data e hora em que o post sai.
+    Hora que já passou hoje = amanhã nesse horário. Vazio/inválido = "" (próximo horário)."""
+    try:
+        h = int(str(hora).strip().rstrip("h"))
+    except (TypeError, ValueError):
+        return ""
+    if not 0 <= h <= 23:
+        return ""
+    agora = datetime.now(BR)
+    dia = agora if h > agora.hour else agora + timedelta(days=1)
+    return f"{dia:%Y-%m-%d}T{h:02d}:00"
+
+
+def _quando_legivel(quando: str) -> str:
+    if not quando:
+        return "no próximo horário"
+    hoje = datetime.now(BR).strftime("%Y-%m-%d")
+    dia, hora = quando.split("T")
+    return f"{'hoje' if dia == hoje else 'amanhã' if dia > hoje else dia} às {int(hora[:2])}h"
+
+
+def ja_pode_sair(o: dict) -> bool:
+    q = o.get("quando") or ""
+    return not q or q <= datetime.now(BR).strftime("%Y-%m-%dT%H:%M")
+
+
+def escrever_agenda() -> None:
+    """Põe no garimpo.json (o painel lê) o que está aprovado e esperando, com o horário de cada um."""
+    if not GARIMPO.exists():
+        return
+    try:
+        dados = json.loads(GARIMPO.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    dados["agenda"] = [{"produto": o["nome"], "loja": o["loja"], "preco": o["preco"], "quando": o.get("quando", "")}
+                       for o in ler_manuais()]
+    GARIMPO.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def _por_na_fila(oferta: dict, existentes: set) -> bool:
     if oferta["link"] in existentes:
         return False
     novo = not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0
-    campos = ["loja", "produto", "preco", "preco_antes", "cupom", "link", "imagem", "postado"]
+    campos = _campos_da_fila()
     with open(OFERTAS_MANUAIS, "a", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=campos, extrasaction="ignore")
         if novo:
@@ -785,6 +847,7 @@ def oferta_do_formulario() -> str:
     preco = os.getenv("OFERTA_PRECO", "").strip()
     antes = os.getenv("OFERTA_PRECO_ANTES", "").strip()
     cupom_txt = os.getenv("OFERTA_CUPOM", "").strip()
+    quando = quando_do_horario(os.getenv("OFERTA_HORARIO", "")) if os.getenv("OFERTA_HORARIO", "").strip() else ""
     texto = f"{link}\n{nome}\n{preco}" + (f" / {antes}" if antes else "") + (f"\ncupom: {cupom_txt}" if cupom_txt else "")
     oferta, problema = interpretar(texto)
     if not oferta:
@@ -795,6 +858,7 @@ def oferta_do_formulario() -> str:
     existentes = set()
     if OFERTAS_MANUAIS.exists():
         existentes = {l.get("link", "").strip() for l in csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8"))}
+    oferta["quando"] = quando
     if not _por_na_fila(oferta, existentes):
         print("[formulário] essa oferta já estava na fila.")
         return oferta["link"]
@@ -1036,6 +1100,7 @@ def atualizar_painel(historico: dict) -> int:
         "bot": _usuario_do_bot(historico),
         "itens": lista[:250],
     }, ensure_ascii=False, indent=1), encoding="utf-8")
+    escrever_agenda()
     return adicionados
 
 
@@ -1136,10 +1201,10 @@ _PREFIXOS = {"ml": "https://meli.la/", "sp": "https://s.shopee.com.br/", "az": "
 
 
 def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set) -> int:
-    m = re.match(r"^(ok|ml|sp|az)_([a-f0-9]{6})(?:_([A-Za-z0-9]+))?$", comando)
+    m = re.match(r"^(ok|ml|sp|az)_([a-f0-9]{6})(?:_([A-Za-z0-9]+))?(?:-h(\d{1,2}))?$", comando)
     if not m:
         return -1
-    tipo, gid, codigo = m.groups()
+    tipo, gid, codigo, hora = m.groups()
     item = next((i for i in _ler_garimpo().get("itens", []) if i.get("gid") == gid), None)
     if not item:
         _responder(chat, "⚠️ Não achei esse achado no painel (ele pode ter saído, o painel guarda só 48h).")
@@ -1162,7 +1227,8 @@ def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set
                 pass
     oferta = {"loja": item["loja"], "produto": item["nome"], "preco": f"{float(item['preco']):.2f}",
               "preco_antes": f"{float(item['preco_antes']):.2f}" if item.get("preco_antes") else "",
-              "cupom": item.get("cupom", ""), "link": link, "imagem": item.get("imagem", ""), "postado": ""}
+              "cupom": item.get("cupom", ""), "link": link, "imagem": item.get("imagem", ""), "postado": "",
+              "quando": quando_do_horario(hora) if hora else ""}
     if not _por_na_fila(oferta, existentes):
         _responder(chat, "ℹ️ Esse achado já estava na fila.")
         return 0
@@ -1170,8 +1236,8 @@ def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set
     if gid not in aprovados:
         aprovados.append(gid)
     historico["_aprovados"] = aprovados[-500:]
-    _responder(chat, f"✅ Na fila pelo painel: {item['nome']} por {brl(float(item['preco']))} "
-                     f"({item['loja']}). Já vai sair nesta rodada.")
+    _responder(chat, f"✅ Programado pelo painel: {item['nome']} por {brl(float(item['preco']))} "
+                     f"({item['loja']}). Sai {_quando_legivel(oferta['quando'])}.")
     return 1
 
 
@@ -1334,6 +1400,11 @@ def postar_lista(escolhidas: list[dict], historico: dict, teste: bool = False) -
     if not teste:
         salvar_historico(historico)
     print(f"{len(escolhidas)} oferta(s) {'simulada(s)' if teste else 'postada(s)'} em {datetime.now(BR):%d/%m %H:%M}.")
+    if not teste:
+        try:
+            escrever_agenda()
+        except Exception as e:
+            print(f"[aviso] agenda do painel: {e}")
 
 
 def main() -> None:
@@ -1352,10 +1423,16 @@ def main() -> None:
             link_form = oferta_do_formulario()
         except Exception as e:
             print(f"[aviso] formulário do painel: {e}")
+        try:
+            escrever_agenda()
+        except Exception as e:
+            print(f"[aviso] agenda do painel: {e}")
         modo_form = os.getenv("OFERTA_MODO", "agora").strip().lower() or "agora"
+        if os.getenv("OFERTA_HORARIO", "").strip():
+            modo_form = "guardar"         # escolheu um horário: fica programado, não sai agora
         if os.getenv("OFERTA_LINK", "").strip():
             if modo_form == "guardar":
-                print("[formulário] guardado na fila; sai no próximo horário do robô. Nada postado agora.")
+                print("[formulário] programado na fila; sai no horário escolhido. Nada postado agora.")
                 return
             if not link_form:
                 return            # o formulário não deu certo: não posta a fila junto
@@ -1364,7 +1441,10 @@ def main() -> None:
             if so_este:
                 postar_lista(so_este, historico, teste)
             return
-    ofertas = ler_manuais()
+    fila = ler_manuais()
+    ofertas = [o for o in fila if ja_pode_sair(o)]
+    if len(ofertas) < len(fila):
+        print(f"[agenda] {len(fila) - len(ofertas)} aprovada(s) esperando o horário programado.")
 
     if RADAR_MODO == "auto":
         try:
