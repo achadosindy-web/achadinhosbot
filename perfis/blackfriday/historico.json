@@ -217,10 +217,12 @@
   "d0afd2",
   "8c6bf5",
   "3d793b",
-  "e9b00d"
+  "e9b00d",
+  "03c572",
+  "cda30d"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290593,
+ "_tg_offset": 808290595,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -643,7 +645,7 @@
  "tipo-goma": 1793154050.288745,
  "manual-febacca268": 1793189223.504139,
  "nome-aparelhodejantarech\u00e120pe\u00e7asoffwhiteemarr": 1793189223.5041435,
- "tipo-aparelho": 1793189223.5047472,
+ "tipo-aparelho": 1793317390.9677393,
  "manual-9ce94a234c": 1793189264.9481792,
  "nome-massageadoreletricocintaparaal\u00edviardorc\u00f3": 1793189264.9481838,
  "tipo-massageador": 1793189264.9486897,
@@ -764,5 +766,10 @@
  "tipo-espelho": 1793306211.0248015,
  "manual-b318e42535": 1793306249.7784793,
  "nome-sapateirademetal12parescomcabideiro": 1793306249.7784836,
- "tipo-sapateira": 1793306249.7789512
+ "tipo-sapateira": 1793306249.7789512,
+ "manual-ae170174f7": 1793317360.44233,
+ "nome-ofertaexclusivaprime": 1793317360.4423337,
+ "tipo-exclusiva": 1793317360.442966,
+ "manual-81f3c31d96": 1793317390.9672647,
+ "nome-aparelhodejantaroxfordcer\u00e2micafolk20pe\u00e7a": 1793317390.9672692
 }
