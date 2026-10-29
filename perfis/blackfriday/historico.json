@@ -205,10 +205,12 @@
   "ac23e8",
   "c07578",
   "300923",
-  "91fc4e"
+  "91fc4e",
+  "b9d6c9",
+  "757636"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290581,
+ "_tg_offset": 808290583,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -719,5 +721,11 @@
  "tipo-loja": 1793274080.6215105,
  "manual-8d62592bc5": 1793274110.5715435,
  "nome-jogodetoalhabanhoerosto4p\u00e7100algod\u00e3omaci": 1793274110.5715714,
- "tipo-toalha": 1793274110.5720625
+ "tipo-toalha": 1793274110.5720625,
+ "manual-937c9b21e4": 1793276248.798978,
+ "nome-capaprotetoracolch\u00e3obox": 1793276248.7989848,
+ "tipo-capa": 1793276248.799616,
+ "manual-4654e1aac0": 1793276297.6200416,
+ "nome-cafeteiratrescora\u00e7\u00f5eslovautom\u00e1tica": 1793276297.6200473,
+ "tipo-cafeteira": 1793276297.6202095
 }
