@@ -210,10 +210,13 @@
   "757636",
   "e22fe5",
   "1979f3",
-  "c8e3a8"
+  "c8e3a8",
+  "a0c69c",
+  "1ddabc",
+  "59ceac"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290586,
+ "_tg_offset": 808290589,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -267,7 +270,7 @@
  "radar-B0FHLR7WQQ": 1792927409.0380192,
  "nome-shortslinhomasculinosandrinicasual": 1792927409.0380235,
  "radar-B07GM8DVLT": 1792928036.7213507,
- "nome-ativeasnotifica\u00e7\u00f5esparaavisarmosquandote": 1792928036.7213564,
+ "nome-ativeasnotifica\u00e7\u00f5esparaavisarmosquandote": 1793290017.860076,
  "radar-B0D8V17JSG": 1792929891.2927024,
  "nome-filtrodelinhadpsiclamperenergia5tomadas1": 1792929891.2927067,
  "manual-21b180442d": 1792931648.779403,
@@ -515,7 +518,7 @@
  "tipo-lego": 1793060123.4233925,
  "radar-B0DCPBKT3Q": 1793067009.7026813,
  "nome-mixerel\u00e9trico3em1wap1000w": 1793067009.7026858,
- "tipo-mixer": 1793102787.0728726,
+ "tipo-mixer": 1793289967.797138,
  "radar-B0765KZ264": 1793067040.5737677,
  "nome-elgsuportearticuladoparamonitor17a35pole": 1793067040.5737722,
  "manual-aea1c4a7bc": 1793102787.0724545,
@@ -738,5 +741,12 @@
  "nome-kitcom3potesherm\u00e9tico1040mlcomdivis\u00f3ria": 1793289423.7690673,
  "manual-76cf8f8aa8": 1793289451.9619691,
  "nome-pipoqueirapocinepp02vermelhocomdosador12": 1793289451.9619737,
- "tipo-pipoqueira": 1793289451.9624646
+ "tipo-pipoqueira": 1793289451.9624646,
+ "manual-418a845718": 1793289967.7965186,
+ "nome-mixerdem\u00e3o200welgincompactoeleve": 1793289967.796523,
+ "manual-2e5357fe85": 1793290017.8600717,
+ "tipo-ative": 1793290017.8605702,
+ "manual-4ff48dc2d7": 1793290059.5969918,
+ "nome-garrafat\u00e9rmicaaerolighttransitstanley591": 1793290059.5969958,
+ "tipo-garrafa": 1793290059.5971339
 }
