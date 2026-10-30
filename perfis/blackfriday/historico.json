@@ -223,10 +223,14 @@
   "03c015",
   "ad5a9b",
   "d45818",
-  "015476"
+  "015476",
+  "502269",
+  "21cebe",
+  "31876d",
+  "ba754f"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290599,
+ "_tg_offset": 808290603,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -516,7 +520,7 @@
  "tipo-monitor": 1793059381.6401255,
  "radar-B0D2RKHBG4": 1793059417.5024285,
  "nome-camisetapumaessentialsno1logomasculina": 1793059417.502433,
- "tipo-camiseta": 1793362090.907242,
+ "tipo-camiseta": 1793372951.1989608,
  "radar-B0CDCMT8FY": 1793059460.5309982,
  "nome-lactabislakachocolatebrancokit3unidades1": 1793059460.5310032,
  "tipo-lacta": 1793146746.1623626,
@@ -786,5 +790,16 @@
  "nome-kit4camisetadryfitmasculinaparvori": 1793362090.906754,
  "manual-4064121936": 1793362137.8175642,
  "nome-powerbankturbo50000mahcarregadorport\u00e1til": 1793362137.8175683,
- "tipo-power": 1793362137.818054
+ "tipo-power": 1793362137.818054,
+ "manual-fa5cb01e61": 1793372951.1982276,
+ "nome-camisetalighttshirtinsidermasculinov\u00e1ria": 1793372951.1982324,
+ "manual-48993d7a6b": 1793372984.2172592,
+ "nome-guardachuvaautom\u00e1ticorefor\u00e7adoprote\u00e7\u00e3oso": 1793372984.217264,
+ "tipo-guarda": 1793372984.2178373,
+ "manual-3e4408cf5a": 1793373009.4239943,
+ "nome-smarttvhisensehd32polegadas32a4nvcomhdr1": 1793373009.4239988,
+ "tipo-smart": 1793373009.424542,
+ "manual-0bfc469c8e": 1793373038.7871044,
+ "nome-rel\u00f3giomasculinoluxopoedagaroldmoneya\u00e7oq": 1793373038.7871084,
+ "tipo-rel\u00f3gio": 1793373038.7876823
 }
