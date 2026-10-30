@@ -219,10 +219,14 @@
   "3d793b",
   "e9b00d",
   "03c572",
-  "cda30d"
+  "cda30d",
+  "03c015",
+  "ad5a9b",
+  "d45818",
+  "015476"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290595,
+ "_tg_offset": 808290599,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -512,7 +516,7 @@
  "tipo-monitor": 1793059381.6401255,
  "radar-B0D2RKHBG4": 1793059417.5024285,
  "nome-camisetapumaessentialsno1logomasculina": 1793059417.502433,
- "tipo-camiseta": 1793059417.5029364,
+ "tipo-camiseta": 1793362090.907242,
  "radar-B0CDCMT8FY": 1793059460.5309982,
  "nome-lactabislakachocolatebrancokit3unidades1": 1793059460.5310032,
  "tipo-lacta": 1793146746.1623626,
@@ -771,5 +775,16 @@
  "nome-ofertaexclusivaprime": 1793317360.4423337,
  "tipo-exclusiva": 1793317360.442966,
  "manual-81f3c31d96": 1793317390.9672647,
- "nome-aparelhodejantaroxfordcer\u00e2micafolk20pe\u00e7a": 1793317390.9672692
+ "nome-aparelhodejantaroxfordcer\u00e2micafolk20pe\u00e7a": 1793317390.9672692,
+ "manual-ffbc439bc9": 1793362027.5876343,
+ "nome-esteirael\u00e9tricaredfinidealidl227dobr\u00e1vel": 1793362027.5876384,
+ "tipo-esteira": 1793362027.5882325,
+ "manual-61ef975309": 1793362059.8177948,
+ "nome-jogodeferramentas200pe\u00e7asprofissionalcom": 1793362059.8177989,
+ "tipo-ferramenta": 1793362059.8183455,
+ "manual-918a561670": 1793362090.90675,
+ "nome-kit4camisetadryfitmasculinaparvori": 1793362090.906754,
+ "manual-4064121936": 1793362137.8175642,
+ "nome-powerbankturbo50000mahcarregadorport\u00e1til": 1793362137.8175683,
+ "tipo-power": 1793362137.818054
 }
