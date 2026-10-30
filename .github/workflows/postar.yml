@@ -109,7 +109,8 @@ jobs:
           GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
           RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
-          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadoscasaedecor,achadosfitnessbr,achadosshopebrasil,guerradealsfit"
+          # 30/10: + ofertasEcuponsSheinBR (teste de canal da Shein; se der "0 posts lidos" no log, tirar)
+          RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadoscasaedecor,achadosfitnessbr,achadosshopebrasil,guerradealsfit,ofertasEcuponsSheinBR"
         run: python bot.py
 
       # ---------------- Perfil Geral (achadinhos em geral) ----------------
