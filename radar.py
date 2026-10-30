@@ -321,6 +321,8 @@ def loja_do_link(url: str) -> str:
         return "Mercado Livre"
     if "shopee" in u or "shp.ee" in u:
         return "Shopee"
+    if "shein" in u:
+        return "Shein"
     return ""
 
 
@@ -332,7 +334,7 @@ UA_NAV = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) 
           "Accept-Language": "pt-BR,pt;q=0.9"}
 _LOJA_NA_PAGINA = re.compile(
     r"https?://(?:amzn\.to|(?:www\.)?amazon\.com\.br|meli\.la|(?:produto\.|www\.)?mercadolivre\.com\.br|"
-    r"s\.shopee\.com\.br|shope\.ee|(?:www\.)?shopee\.com\.br)/[^\s\"'<>\\]+", re.I)
+    r"s\.shopee\.com\.br|shope\.ee|(?:www\.)?shopee\.com\.br|(?:[a-z0-9-]+\.)*shein\.(?:com|com\.br|top))/[^\s\"'<>\\]+", re.I)
 _cache_seguir: dict[str, str] = {}
 
 
@@ -351,7 +353,7 @@ def seguir(url: str, saltos: int = 4) -> str:
             achados = [html.unescape(m) for m in _LOJA_NA_PAGINA.findall(r.text[:600_000])]
             # prefere link curto de afiliado/produto; ignora páginas genéricas da loja
             achados = [a for a in achados if not re.search(r"\.(png|jpe?g|webp|svg|js|css)(\?|$)", a, re.I)]
-            produto = [a for a in achados if re.search(r"amzn\.to|meli\.la|s\.shopee|shope\.ee|/dp/|/MLB-?\d|/p/MLB|-i\.\d+\.\d+", a, re.I)]
+            produto = [a for a in achados if re.search(r"amzn\.to|meli\.la|s\.shopee|shope\.ee|/dp/|/MLB-?\d|/p/MLB|-i\.\d+\.\d+|shein\.[a-z.]+/.*-p-\d+|onelink\.shein", a, re.I)]
             if produto or achados:
                 final = (produto or achados)[0]
     except Exception:

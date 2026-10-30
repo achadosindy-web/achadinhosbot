@@ -631,6 +631,8 @@ def _loja(url: str) -> str:
         return "Mercado Livre"
     if "shopee" in h or "shp.ee" in h:
         return "Shopee"
+    if "shein" in h:
+        return "Shein"
     return "Oferta"
 
 
@@ -672,7 +674,7 @@ def dados_da_pagina(url: str) -> dict:
     if not titulo:
         m = re.search(r"<title[^>]*>([^<]+)</title>", h, re.I)
         titulo = html_unescape(m.group(1)).strip() if m else ""
-    titulo = re.sub(r"\s*[|\-–]\s*(Shopee Brasil|Shopee|Mercado Livre|MercadoLivre|Magalu|Amazon\.com\.br).*$", "", titulo, flags=re.I)
+    titulo = re.sub(r"\s*[|\-–]\s*(Shopee Brasil|Shopee|Mercado Livre|MercadoLivre|Magalu|Amazon\.com\.br|SHEIN Brasil|SHEIN).*$", "", titulo, flags=re.I)
     titulo = re.sub(r"^Amazon\.com\.br\s*:\s*", "", titulo, flags=re.I)
     preco = 0.0
     bruto = meta("product:price:amount", "og:price:amount", "price")
@@ -1310,7 +1312,7 @@ def ler_caixa_do_bot(historico: dict) -> int:
         aviso = ""
         if oferta["loja"] == "Amazon" and not AMAZON_TAG and "tag=" not in oferta["link"]:
             aviso = "\n⚠️ Falta configurar a tag da Amazon (AMAZON_TAG): esse link pode não render comissão."
-        elif oferta["loja"] in ("Shopee", "Mercado Livre"):
+        elif oferta["loja"] in ("Shopee", "Mercado Livre", "Shein"):
             aviso = ("\n⚠️ Confere se esse link é o SEU. Se você copiou de outro grupo, "
                      "troca pelo seu link de afiliado, senão a comissão vai pra quem postou.")
         _responder(chat, f"✅ Na fila: {oferta['produto']} por {brl(float(oferta['preco']))} "
