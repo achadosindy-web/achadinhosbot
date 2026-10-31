@@ -57,8 +57,11 @@ on:
         default: ""
 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
+# Rodadas normais: uma de cada vez. O GitHub só guarda UMA rodada esperando por grupo
+# (a mais nova substitui a anterior), por isso o "Postar agora / formulário" do painel
+# ganha um grupo próprio por execução: assim nenhum produto mandado do painel se perde na fila.
 concurrency:
-  group: postar
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.link != '' && format('postar-painel-{0}', github.run_id) || 'postar' }}
   cancel-in-progress: false
 
 permissions:
