@@ -380,6 +380,22 @@ def _green(metodo_api: str, **kw):
     return r.json() if r.content else {}
 
 
+def whatsapp_conectado() -> bool:
+    """Confere na Green-API se o WhatsApp do robô está conectado ("authorized").
+    Desconectado, a Green-API aceita a mensagem mas deixa parada na fila: aí é melhor nem mandar."""
+    if not _usa_green():
+        return True
+    try:
+        estado = _green("getStateInstance", metodo="get").get("stateInstance", "")
+    except Exception as e:
+        print(f"[aviso] não consegui conferir a conexão do WhatsApp: {e}")
+        return True                      # na dúvida, tenta postar como antes
+    if estado != "authorized":
+        print(f"[whatsapp] DESCONECTADO (estado: {estado}). Nada foi postado; a fila espera a reconexão.")
+        return False
+    return True
+
+
 def _grupo_green(g: str) -> str:
     return g.replace("-group", "@g.us") if g.endswith("-group") else g
 
@@ -1342,6 +1358,17 @@ def registrar_vitrine(o: dict) -> None:
 
 # ------------------------------- Principal -----------------------------------
 def postar_lista(escolhidas: list[dict], historico: dict, teste: bool = False) -> None:
+    if escolhidas and not teste and whatsapp_ligado() and not whatsapp_conectado():
+        aviso = ("⚠️ O WhatsApp do robô está DESCONECTADO, então não postei nada nesta rodada.\n\n"
+                 f"{len(escolhidas)} post(s) continuam na fila e saem na próxima rodada depois de reconectar.\n\n"
+                 "Pra reconectar: console.green-api.com → instância → aba \"Link with QR code\" → "
+                 "no celular do robô, WhatsApp → Aparelhos conectados → Conectar um aparelho.")
+        for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+            try:
+                telegram(chat, aviso, None)
+            except Exception as e:
+                print(f"[aviso] não consegui avisar {chat} no Telegram: {e} (mande /start pro robô)")
+        return
     for o in escolhidas:
         foto_bytes = None
         if not teste:
