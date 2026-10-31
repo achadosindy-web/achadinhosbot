@@ -242,10 +242,13 @@
   "af2989",
   "44a549",
   "cfd2e2",
-  "0f3419"
+  "0f3419",
+  "f40179",
+  "63cc71",
+  "3a0482"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290619,
+ "_tg_offset": 808290622,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -705,7 +708,7 @@
  "tipo-brilhante": 1793200189.81163,
  "radar-B09DD1W8J9": 1793200216.9681377,
  "nome-philipscolgaterefilbranqueadoraparaescov": 1793200216.9681423,
- "tipo-philip": 1793200216.9686356,
+ "tipo-philip": 1793480344.558815,
  "radar-B0FPG8KLS8": 1793200254.2469049,
  "nome-smartwatchhuaweiwatchgt6pro46mmbateriaco": 1793200254.246909,
  "tipo-smartwatch": 1793200254.2474072,
@@ -900,5 +903,7 @@
  "nome-projetorport\u00e1til4khdwifibluetooth": 1793470273.7282913,
  "tipo-projetor": 1793470273.728782,
  "manual-a580dde20b": 1793470305.457112,
- "nome-escovasecadorabrit\u00e2nia1300wsoftbivolt": 1793470305.4571168
+ "nome-escovasecadorabrit\u00e2nia1300wsoftbivolt": 1793470305.4571168,
+ "manual-3400290f3b": 1793480344.5581133,
+ "nome-philipsfonedeouvidosemfiotwstat1109bk00b": 1793480344.55812
 }
