@@ -867,7 +867,7 @@
  "tipo-cooktop": 1793532151.836821,
  "manual-3065b57983": 1793452388.2101526,
  "nome-ventiladordetetoccontrole6velfenixventis": 1793452388.2101588,
- "tipo-ventilador": 1793452388.2107394,
+ "tipo-ventilador": 1793545816.4086583,
  "manual-ac670ff249": 1793452522.3230832,
  "nome-cozedordeovosautom\u00e1ticopanelaavaporel\u00e9tr": 1793452522.323089,
  "tipo-cozedor": 1793452522.3237338,
@@ -915,7 +915,7 @@
  "nome-philipsfonedeouvidosemfiotwstat1109bk00b": 1793480344.55812,
  "manual-c974081cba": 1793480954.42449,
  "nome-fonedeouvidojbltune530bt": 1793480954.4244962,
- "tipo-fone": 1793480954.4248927,
+ "tipo-fone": 1793545788.291262,
  "manual-d1cb822dbc": 1793484695.6066701,
  "nome-c\u00e2merainteligenteim3cblackintelbras": 1793484695.6066747,
  "tipo-c\u00e2mera": 1793541903.8634472,
@@ -972,5 +972,12 @@
  "tipo-stanley": 1793544728.9266176,
  "manual-2930a0ed36": 1793544821.8303027,
  "nome-mochilasemg\u00eaneroimperme\u00e1velrefor\u00e7adacomc": 1793544821.8303082,
- "tipo-mochila": 1793544821.830904
+ "tipo-mochila": 1793544821.830904,
+ "manual-098dda3b7f": 1793545788.2905843,
+ "nome-fonedeouvidobluetoothtwsdaponf25": 1793545788.290589,
+ "manual-2197afdf78": 1793545816.408057,
+ "nome-ventiladormalloryturbo6p\u00e1s30cmcompacto22": 1793545816.4080625,
+ "manual-1cc4b0cb51": 1793545846.316449,
+ "nome-electroluxmicroondasme23pefficientpreto2": 1793545846.3164537,
+ "tipo-electrolux": 1793545846.3166173
 }
