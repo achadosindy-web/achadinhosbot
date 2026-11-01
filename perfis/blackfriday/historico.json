@@ -248,10 +248,12 @@
   "3a0482",
   "c1c086",
   "18b8ee",
-  "256421"
+  "256421",
+  "9a0086",
+  "397dae"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290625,
+ "_tg_offset": 808290627,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -585,7 +587,7 @@
  "nome-neutrogenahidratantecorporalintensivonor": 1793111092.8104136,
  "radar-B0HFKYSB3S": 1793113763.832597,
  "nome-kitvaralretr\u00e1tildobr\u00e1vela\u00e7orefor\u00e7ado4msu": 1793113763.8326035,
- "tipo-varal": 1793113763.8329098,
+ "tipo-varal": 1793536692.9669921,
  "radar-B0FNGHWMZT": 1793113797.1376483,
  "nome-dove\u00f3leoes\u00e9rumbif\u00e1sicouvrepairglowfer\u00fali": 1793113797.1376576,
  "tipo-dove": 1793113797.1383052,
@@ -936,5 +938,7 @@
  "nome-tabletandroid14": 1793534805.8490398,
  "manual-ed80e24b8d": 1793535611.6479604,
  "nome-headsethavith2232dgamerilumina\u00e7\u00e3orgbcomm": 1793535611.6479652,
- "tipo-headset": 1793535611.6485584
+ "tipo-headset": 1793535611.6485584,
+ "manual-e4e6937585": 1793536692.9663346,
+ "nome-varaldobr\u00e1veldech\u00e3o3andaresderoupasgrand": 1793536692.9663398
 }
