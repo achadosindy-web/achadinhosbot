@@ -102,27 +102,47 @@ MAX_POR_CATEGORIA = int(os.getenv("MAX_POR_CATEGORIA", "2"))
 PRIORIDADE = [c.strip().lower() for c in os.getenv("CATEGORIAS_PRIORIDADE", "").split(",") if c.strip()]
 
 SHOPEE_URL = "https://open-api.affiliate.shopee.com.br/graphql"
+# 06/11: busca da Shopee no painel. Por rodada: algumas palavras pelos MAIS VENDIDOS,
+# algumas pela MAIOR COMISSÃO e (na Black Friday) a lista de destaques da própria Shopee.
+SHOPEE_MAIS_VENDIDOS = int(os.getenv("SHOPEE_MAIS_VENDIDOS", "2"))   # palavras buscadas pelos mais vendidos
+SHOPEE_COMISSAO = int(os.getenv("SHOPEE_COMISSAO", "1"))             # palavras buscadas pela maior comissão
+# Destaques = "melhor desempenho" da Shopee, sem palavra-chave (vem de tudo quanto é categoria).
+# Ligado só na Black Friday por padrão, pra não encher o painel fitness da Indy.
+SHOPEE_DESTAQUES = os.getenv("SHOPEE_DESTAQUES", "sim" if PERFIL == "blackfriday" else "nao"
+                             ).strip().lower() in ("sim", "1", "true")
 BR = timezone(timedelta(hours=-3))
 
 
 # ------------------------------- Shopee --------------------------------------
-def shopee_buscar(palavra: str, limite: int = 20) -> list[dict]:
-    """Consulta productOfferV2 na API oficial de afiliados da Shopee Brasil."""
-    query = """
-    query($keyword: String, $limit: Int, $sortType: Int) {
-      productOfferV2(keyword: $keyword, limit: $limit, sortType: $sortType) {
-        nodes {
-          itemId productName priceMin priceMax priceDiscountRate
-          commissionRate sales ratingStar imageUrl offerLink shopName
-        }
-      }
-    }"""
-    # sortType 2 = mais vendidos (confira na doc do painel; da pra trocar)
-    corpo = json.dumps({
-        "query": query,
-        "variables": {"keyword": palavra, "limit": limite,
-                      "sortType": int(os.getenv("SHOPEE_SORT", "2"))},
-    }, separators=(",", ":"))
+# Ordem da busca (sortType): 1 relevância, 2 mais vendidos, 3 maior preço, 4 menor preço, 5 maior comissão
+# Lista (listType, sem palavra-chave): 0 recomendados, 1 maior comissão, 2 melhor desempenho
+def shopee_buscar(palavra: str = "", limite: int = 20, ordem: int | None = None,
+                  lista: int | None = None) -> list[dict]:
+    """Consulta productOfferV2 na API oficial de afiliados da Shopee Brasil.
+    Com palavra: busca por ela, na ordem pedida (padrão: mais vendidos).
+    Sem palavra e com lista: traz a lista pronta da Shopee (ex.: 2 = melhor desempenho)."""
+    declara, argumentos = ["$limit: Int"], ["limit: $limit"]
+    variaveis = {"limit": limite}
+    if palavra:
+        declara += ["$keyword: String", "$sortType: Int"]
+        argumentos += ["keyword: $keyword", "sortType: $sortType"]
+        variaveis["keyword"] = palavra
+        variaveis["sortType"] = int(ordem or os.getenv("SHOPEE_SORT", "2"))
+    if lista is not None:
+        declara.append("$listType: Int")
+        argumentos.append("listType: $listType")
+        variaveis["listType"] = int(lista)
+    query = (
+        "query(" + ", ".join(declara) + ") {\n"
+        "  productOfferV2(" + ", ".join(argumentos) + ") {\n"
+        "    nodes {\n"
+        "      itemId productName priceMin priceMax priceDiscountRate\n"
+        "      commissionRate sales ratingStar imageUrl offerLink shopName\n"
+        "    }\n"
+        "  }\n"
+        "}"
+    )
+    corpo = json.dumps({"query": query, "variables": variaveis}, separators=(",", ":"))
     ts = str(int(time.time()))
     assinatura = hashlib.sha256(
         (SHOPEE_APP_ID + ts + corpo + SHOPEE_SECRET).encode()
@@ -157,6 +177,21 @@ def shopee_buscar(palavra: str, limite: int = 20) -> list[dict]:
         except (KeyError, TypeError, ValueError):
             continue
     return ofertas
+
+
+def buscas_da_shopee() -> list[tuple[str, int | None, int | None, str]]:
+    """Monta as buscas da rodada: (palavra, ordem, lista, rótulo pro log)."""
+    qtd = min(SHOPEE_MAIS_VENDIDOS + SHOPEE_COMISSAO, len(PALAVRAS))
+    sorteadas = random.sample(PALAVRAS, k=qtd) if qtd else []
+    buscas = []
+    for n, palavra in enumerate(sorteadas):
+        if n < SHOPEE_MAIS_VENDIDOS:
+            buscas.append((palavra, 2, None, f"'{palavra}' (mais vendidos)"))
+        else:
+            buscas.append((palavra, 5, None, f"'{palavra}' (maior comissão)"))
+    if SHOPEE_DESTAQUES:
+        buscas.append(("", None, 2, "destaques (melhor desempenho)"))
+    return buscas
 
 
 # --------------------------- Ofertas manuais ---------------------------------
@@ -1002,11 +1037,12 @@ def atualizar_painel(historico: dict) -> int:
     conhecidos = {i.get("id") for i in itens.values()}
     novos = radar.buscar(conhecidos, nicho="tudo")
     if SHOPEE_APP_ID and SHOPEE_SECRET:
-        for palavra in random.sample(PALAVRAS, k=min(3, len(PALAVRAS))):
+        # 06/11: palavras pelos mais vendidos + palavras pela maior comissão + destaques da Shopee
+        for palavra, ordem, lista, rotulo in buscas_da_shopee():
             try:
-                achados = shopee_buscar(palavra)
+                achados = shopee_buscar(palavra, ordem=ordem, lista=lista)
             except Exception as e:
-                print(f"[aviso] Shopee '{palavra}': {e}")
+                print(f"[aviso] Shopee {rotulo}: {e}")
                 continue
             for o in achados:
                 if o["id"] in conhecidos or o["id"] in historico:
@@ -1016,8 +1052,9 @@ def atualizar_painel(historico: dict) -> int:
                 d = o.get("desconto") or 0
                 o.update(converter=True, categoria=radar.categoria(o["nome"]), fonte="Shopee",
                          preco_antes=round(o["preco"] / (1 - d / 100), 2) if 0 < d < 100 else 0)
+                conhecidos.add(o["id"])          # o mesmo produto em duas buscas entra uma vez só
                 novos.append(o)
-            print(f"[painel] Shopee '{palavra}': {len(achados)} produto(s)")
+            print(f"[painel] Shopee {rotulo}: {len(achados)} produto(s)")
     # Mesmo link curto usado em produtos DIFERENTES = link da vitrine do canal, não do produto
     # (o Descontos Top usa o mesmo meli.la/2MiAos1 pro tablet Lenovo, Redmi Pad...). Esses saem.
     nomes_por_link: dict[str, set] = {}
