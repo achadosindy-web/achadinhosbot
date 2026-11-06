@@ -294,10 +294,13 @@
   "946756",
   "020944",
   "5a6688",
-  "142165"
+  "142165",
+  "e28685",
+  "9229b7",
+  "0ddae8"
  ],
  "radar-B0GYFYZHH4": 1792692302.597988,
- "_tg_offset": 808290687,
+ "_tg_offset": 808290690,
  "manual-30ef9541e3": 1792757604.2085016,
  "radar-B0H6QVYHJJ": 1792793401.856743,
  "radar-B0HFB7X39Y": 1792800558.5694928,
@@ -500,7 +503,7 @@
  "tipo-mop": 1793027516.7572765,
  "radar-B0F678PCRM": 1793027558.7024252,
  "nome-parafusadeiraefuradeiraimpactowap38wf700": 1793027558.7024302,
- "tipo-parafusadeira": 1793027558.7025716,
+ "tipo-parafusadeira": 1794001183.9152267,
  "radar-B09XJL4B9H": 1793027602.7388713,
  "nome-kit12potesherm\u00e9ticoselectroluxctampa": 1793027602.7388763,
  "tipo-pote": 1793732585.3356886,
@@ -1169,5 +1172,7 @@
  "nome-bolsapocheteunissexesportivasemvolumecom": 1793993550.7655954,
  "tipo-bolsa": 1793993550.7661347,
  "manual-bf58848b77": 1793997864.723076,
- "nome-smarttv43philcoqledhdr10rokutvp43krb": 1793997864.7230852
+ "nome-smarttv43philcoqledhdr10rokutvp43krb": 1793997864.7230852,
+ "manual-b3c7842cac": 1794001183.9145267,
+ "nome-parafusadeirafuradeira1xbateria25vnakasa": 1794001183.9145343
 }
