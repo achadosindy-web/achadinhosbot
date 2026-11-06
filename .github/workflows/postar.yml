@@ -4,19 +4,31 @@
 #
 # Perfis no mesmo robô:
 #   ingrid      -> grupo Achadinhos da Indy (segredos de sempre, arquivos na raiz). Posta só o que vocês aprovam.
-#   blackfriday -> grupo Black Friday da Indy: SÓ produtos com 40% OFF ou mais, qualquer categoria.
-#                  Posta sozinho. Segredos _BF, arquivos em perfis/blackfriday/.
+#   blackfriday -> grupo Black Friday da Indy: o robô garimpa e o Yuri escolhe no painel.
+#                  Segredos _BF, arquivos em perfis/blackfriday/.
 #   geral       -> DESLIGADO por enquanto (o grupo que era "Achadinhos geral" virou o Black Friday).
 #                  Pra religar um dia: troque LIGAR_GERAL pra "sim" lá embaixo.
+#
+# 05/11 - TESTE "UM POST POR HORA" (só no grupo Black Friday):
+#   - Rodadas da BF de hora em hora, das 8h às 22h (5 do cron-job.org + 10 do GitHub aqui embaixo).
+#   - Cada rodada solta só 1 post da fila. O resto espera a próxima hora.
+#   - O botão "Enviar agora" do painel continua soltando até 5 de uma vez.
+#   - O Achadinhos da Indy não muda nada.
+#   - Pra desfazer: volte o schedule antigo e troque MAX_TOTAL_RODADA da BF pra "5".
+#
+# 06/11 - API da Shopee ligada (segredos SHOPEE_APP_ID e SHOPEE_SECRET).
+#   A cada rodada o robô sorteia 3 palavras de PALAVRAS e busca na Shopee; os achados vão pro painel.
+#   Pra trocar o que ele busca: edite a linha PALAVRAS de cada perfil (separado por vírgula, entre aspas).
 name: Postar achadinhos
 
 on:
-  # Rodadas EXTRAS só do Black Friday (além das 5 do cron-job.org):
-  # 10h30, 13h30, 17h30, 20h30 e 22h30 de Brasília (o GitHub usa horário UTC, +3h).
-  # O GitHub às vezes atrasa alguns minutos essas rodadas; é normal.
+  # Rodadas EXTRAS só do Black Friday (além das 5 do cron-job.org às 9, 12, 15, 19 e 21h):
+  # 8h, 10h, 11h, 13h, 14h, 16h, 17h, 18h, 20h e 22h de Brasília, no minuto 5
+  # (o GitHub usa horário UTC, +3h). O GitHub às vezes atrasa alguns minutos; é normal.
+  # Nenhuma delas lê o grupo Eletro em Oferta (isso continua só nas rodadas do cron-job.org).
   schedule:
-    - cron: "30 13,16,20,23 * * *"
-    - cron: "30 1 * * *"
+    - cron: "5 11,13,14,16,17,19,20,21,23 * * *"
+    - cron: "5 1 * * *"
   workflow_dispatch:
     inputs:
       perfil:
@@ -112,6 +124,8 @@ jobs:
           GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
           RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
+          # 06/11: palavras que o robô busca na Shopee (sorteia 3 por rodada). Moda fitness, moda, beleza e casa.
+          PALAVRAS: "legging fitness cintura alta,legging empina bumbum,conjunto fitness feminino,conjunto legging e top,top academia com bojo,top fitness nadador,short academia feminino,short saia fitness,bermuda ciclista feminina,macaquinho fitness,macacao fitness feminino,regata academia feminina,cropped academia,jaqueta corta vento feminina,sutia esportivo alta sustentacao,meia academia feminina,tenis academia feminino,tenis corrida feminino,bolsa academia feminina,mochila academia,garrafa termica academia,garrafa motivacional 2 litros,coqueteleira,elastico extensor exercicio,kit mini band elastico,tapete yoga,caneleira peso,halter emborrachado,corda de pular,cinta modeladora,body feminino,vestido midi feminino,vestido canelado,blusa feminina basica,calca pantalona feminina,conjunto alfaiataria feminino,sandalia feminina,skincare kit,serum vitamina c,protetor solar facial,hidratante corporal,escova secadora,kit maquiagem,perfume feminino,organizador cozinha,pote hermetico vidro,organizador guarda roupa,utensilios cozinha silicone,toalha de banho,jogo de cama casal"
           # 30/10: + ofertasEcuponsSheinBR (teste de canal da Shein; se der "0 posts lidos" no log, tirar)
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadoscasaedecor,achadosfitnessbr,achadosshopebrasil,guerradealsfit,ofertasEcuponsSheinBR"
         run: python bot.py
@@ -142,7 +156,7 @@ jobs:
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,grupodeachadinhos,achadosshopebrasil,achadoscasaedecor"
         run: python bot.py
 
-      # ---------------- Perfil Black Friday: só produtos com 40% OFF ou mais ----------------
+      # ---------------- Perfil Black Friday ----------------
       - name: Postar ofertas (Black Friday)
         if: (env.PERFIL_PEDIDO == 'todos' || env.PERFIL_PEDIDO == 'blackfriday') && env.TEM_BF == 'true'
         continue-on-error: true
@@ -165,8 +179,11 @@ jobs:
           GREEN_ID: ${{ secrets.GREEN_ID_BF || secrets.GREEN_ID }}
           GREEN_TOKEN: ${{ secrets.GREEN_TOKEN_BF || secrets.GREEN_TOKEN }}
           GREEN_URL: ${{ secrets.GREEN_URL_BF || secrets.GREEN_URL }}
-          OFERTAS_POR_RODADA: "5"    # automáticas por rodada
-          MAX_TOTAL_RODADA: "5"      # no máximo 5 posts por envio, somando aprovadas + automáticas (aprovadas saem primeiro)
+          OFERTAS_POR_RODADA: "1"    # 05/11: teste um post por hora (antes: 5)
+          # 05/11: nas rodadas automáticas (GitHub e cron-job.org) sai só 1 post por rodada;
+          # o resto da fila espera a próxima hora. O botão "Enviar agora" do painel (perfil blackfriday)
+          # continua soltando até 5. Pra desfazer o teste: troque tudo isso por "5".
+          MAX_TOTAL_RODADA: ${{ inputs.perfil == 'blackfriday' && '5' || '1' }}
           RADAR_MODO: "painel"      # 28/10: nada sai sozinho; o robô garimpa e o Yuri escolhe no painel
           LEMBRETE_PAINEL: "sim"    # avisa no Telegram quando tiver achado novo pra escolher
           RADAR_NICHO: "tudo"
@@ -178,7 +195,9 @@ jobs:
           AMAZON_CHECAR_DESCONTO: "sim"   # quando o canal não diz o preço antigo, olha o desconto na página da Amazon
           # Grupos de WhatsApp que o número do robô lê como fonte (formato Nome=codigo@g.us). Fica no segredo RADAR_GRUPOS_ZAP.
           RADAR_GRUPOS_ZAP: ${{ secrets.RADAR_GRUPOS_ZAP }}
-          PALAVRAS: "air fryer,smart tv,fone bluetooth,smartwatch,celular,notebook,aspirador robo,cafeteira,perfume,kit maquiagem,tenis feminino,organizador casa,jogo de panelas,jogo de cama,mala de viagem,brinquedo infantil"
+          # 06/11: palavras mais específicas (ex.: "fritadeira air fryer 5 litros" em vez de "air fryer",
+          # que trazia só forminha). O robô sorteia 3 por rodada e busca na Shopee.
+          PALAVRAS: "fritadeira air fryer 5 litros,air fryer oven forno eletrico,smart tv 50 polegadas,smart tv 43 polegadas,fone bluetooth jbl,fone de ouvido sem fio,smartwatch feminino,smartwatch masculino,celular xiaomi redmi,tablet android,notebook,aspirador robo,aspirador de po vertical,cafeteira expresso,cafeteira dolce gusto,liquidificador alta potencia,mixer de mao,batedeira planetaria,panela eletrica de arroz,panela de pressao eletrica,sanduicheira grill,micro-ondas 20 litros,purificador de agua,ventilador de coluna,climatizador de ar,secador de cabelo profissional,chapinha prancha cabelo,escova secadora,barbeador eletrico,caixa de som bluetooth,soundbar,carregador turbo celular,power bank,camera de seguranca wifi,lampada inteligente wifi,mouse e teclado sem fio,jogo de panelas antiaderente,jogo de facas inox,jogo de cama queen,edredom casal,travesseiro nasa,mala de viagem media,mochila notebook,perfume importado feminino,perfume importado masculino,kit maquiagem completo,tenis corrida masculino,tenis feminino casual,brinquedo educativo infantil,boneca infantil,carrinho controle remoto"
           # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10).
           # Eletro/casa: gtOFERTAS, promo_imperdivel, vrlofertas, ctofertaseletroetv (CT Ofertas Eletro e TV),
           # ofertas_harpyja (eletroportáteis Amazon), escolhasegura, cacadoresofertas, cupons_desconto (Promobit)
