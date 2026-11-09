@@ -917,7 +917,7 @@
  "tipo-cooktop": 1793826858.5302978,
  "manual-3065b57983": 1793452388.2101526,
  "nome-ventiladordetetoccontrole6velfenixventis": 1793452388.2101588,
- "tipo-ventilador": 1793891559.4065955,
+ "tipo-ventilador": 1794245067.460881,
  "manual-ac670ff249": 1793452522.3230832,
  "nome-cozedordeovosautom\u00e1ticopanelaavaporel\u00e9tr": 1793452522.323089,
  "tipo-cozedor": 1793452522.3237338,
@@ -1204,5 +1204,7 @@
  "nome-climatizadorarventisolport\u00e1tilturboevapo": 1794227156.4348805,
  "tipo-climatizador": 1794244731.0526602,
  "manual-0162c35198": 1794244731.0523233,
- "nome-climatizadorsmart4em1resfriaventilaumidi": 1794244731.0523286
+ "nome-climatizadorsmart4em1resfriaventilaumidi": 1794244731.0523286,
+ "manual-01224784b0": 1794245067.460599,
+ "nome-ventiladorumidificadorduplotorre3velocid": 1794245067.4606054
 }
