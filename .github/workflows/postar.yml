@@ -26,6 +26,7 @@
 #     a fila por esse código, não mais pelo link (o link juntava programação nova com post antigo).
 #   - Novo campo "cancelar" (botão "Limpar programação" e "✕" do painel): "tudo" ou os códigos.
 #   - "horario" aceita dia e hora: "2026-11-20T19".
+#   - Programado com horário que passou há mais de 6h sem sair vira "vencido" e sai da fila sem postar.
 #   - Novo campo "garimpar" (botão "🔄 Atualizar garimpo" do painel): "sim" = só busca produtos novos, não posta.
 #   - Mais palavras da Shopee no painel da Indy e da BF: por rodada, 4 pelos mais vendidos + 2 pela maior comissão.
 name: Postar achadinhos
@@ -266,7 +267,7 @@ jobs:
 
           def situacao(*valores):
               v = {(x or "").strip().lower() for x in valores}
-              return "sim" if "sim" in v else "cancelado" if "cancelado" in v else ""
+              return "sim" if "sim" in v else "cancelado" if "cancelado" in v else "vencido" if "vencido" in v else ""
 
           pastas = set()
           for f in arquivos:
@@ -326,7 +327,7 @@ jobs:
                   continue
               agenda = []
               for l in ler_csv(csv_p)[1]:
-                  if not (l.get("link") or "").strip() or (l.get("postado") or "").strip().lower() in ("sim", "cancelado"):
+                  if not (l.get("link") or "").strip() or (l.get("postado") or "").strip().lower() in ("sim", "cancelado", "vencido"):
                       continue
                   try:
                       preco = float((l.get("preco") or "0").replace(",", "."))
