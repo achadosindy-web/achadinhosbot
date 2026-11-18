@@ -29,6 +29,7 @@ Rodar:  python bot.py            (posta de verdade)
     O que é cancelado fica marcado como "cancelado" no ofertas.csv (não sai e não volta).
   - Botão "🔄 Atualizar garimpo" do painel (OFERTA_GARIMPAR=sim): só busca produtos novos pro painel.
     Não lê o Telegram, não mexe na fila e não posta nada.
+  - Programado com horário vencido há mais de VENCE_HORAS (6h) sai da fila como "vencido", sem postar.
   - Junto com a busca da Shopee de 06/11 (mais vendidos + maior comissão + destaques na BF).
     Quantas palavras por rodada: SHOPEE_MAIS_VENDIDOS e SHOPEE_COMISSAO no postar.yml.
 """
@@ -132,7 +133,10 @@ SHOPEE_DESTAQUES = os.getenv("SHOPEE_DESTAQUES", "sim" if PERFIL == "blackfriday
                              ).strip().lower() in ("sim", "1", "true")
 BR = timezone(timedelta(hours=-3))
 # Situações da coluna "postado" que tiram a linha da fila
-FORA_DA_FILA = ("sim", "cancelado")
+FORA_DA_FILA = ("sim", "cancelado", "vencido")
+# 18/11: programado cujo horário passou há mais de tantas horas sem sair = "vencido" (o preço já mudou).
+# Sai da fila sem ir pro grupo e o robô avisa no Telegram. Sem horário ("próximo horário") não vence.
+VENCE_HORAS = float(os.getenv("VENCE_HORAS", "6") or 6)
 
 
 # ------------------------------- Shopee --------------------------------------
@@ -749,6 +753,30 @@ def cancelar_programados(pedido: str) -> int:
         for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
             _responder(chat, texto)
     return n
+
+
+def vencer_programados() -> int:
+    """18/11: tira da fila o que foi programado pra um horário que já passou há mais de VENCE_HORAS
+    e não saiu (ex.: programados de 04/11 que ficaram presos). Não posta: preço velho não vai pro grupo."""
+    campos, linhas = _ler_fila_csv()
+    limite = (datetime.now(BR) - timedelta(hours=VENCE_HORAS)).strftime("%Y-%m-%dT%H:%M")
+    nomes = []
+    for l in linhas:
+        q = (l.get("quando") or "").strip()
+        if not (l.get("link") or "").strip() or _fora_da_fila(l) or not q:
+            continue
+        if q < limite:
+            l["postado"] = "vencido"
+            nomes.append(f"{(l.get('produto') or '')[:40]} ({q[8:10]}/{q[5:7]} {q[11:13]}h)")
+    if nomes:
+        _gravar_fila_csv(campos, linhas)
+        print(f"[agenda] {len(nomes)} programado(s) vencido(s) saíram da fila sem postar: " + "; ".join(nomes[:10]))
+        texto = (f"🧹 Tirei da fila {len(nomes)} programado(s) com horário que já passou (NÃO foram pro grupo, "
+                 f"o preço já pode ter mudado):\n" + "\n".join("• " + n for n in nomes[:15]) +
+                 ("\n…" if len(nomes) > 15 else "") + "\n\nSe quiser algum, programe de novo pelo painel.")
+        for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+            _responder(chat, texto)
+    return len(nomes)
 
 
 # ------------------- Modo rapido: ofertas mandadas pro bot -------------------
@@ -1639,6 +1667,11 @@ def postar_lista(escolhidas: list[dict], historico: dict, teste: bool = False) -
 def main() -> None:
     teste = "--teste" in sys.argv
     historico = carregar_historico()
+    if not teste:
+        try:
+            vencer_programados()
+        except Exception as e:
+            print(f"[aviso] não consegui tirar os programados vencidos: {e}")
     # 18/11: botão "🔄 Atualizar garimpo" do painel: só garimpa, não posta nada
     if not teste and os.getenv("OFERTA_GARIMPAR", "").strip().lower() in ("sim", "1", "true"):
         try:
