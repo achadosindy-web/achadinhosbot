@@ -2,7 +2,7 @@
 # NÃO posta nada no grupo e NÃO mexe no postar.yml, no bot.py nem no garimpo.
 #
 # Roda sozinho 3 vezes por dia (8h40, 13h40 e 18h40 de Brasília) e quando vocês quiserem:
-# Actions > Atualizar catálogo > Run workflow.
+# Actions > Atualizar catálogo > Run workflow, ou o botão "🔄 Atualizar" do catalogo.html.
 # São só 3 rodadas curtas por dia pra não gastar os minutos grátis do GitHub.
 name: Atualizar catálogo
 

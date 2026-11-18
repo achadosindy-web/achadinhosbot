@@ -26,6 +26,7 @@
 #     a fila por esse código, não mais pelo link (o link juntava programação nova com post antigo).
 #   - Novo campo "cancelar" (botão "Limpar programação" e "✕" do painel): "tudo" ou os códigos.
 #   - "horario" aceita dia e hora: "2026-11-20T19".
+#   - Novo campo "garimpar" (botão "🔄 Atualizar garimpo" do painel): "sim" = só busca produtos novos, não posta.
 #   - Mais palavras da Shopee no painel da Indy e da BF: por rodada, 4 pelos mais vendidos + 2 pela maior comissão.
 name: Postar achadinhos
 
@@ -79,13 +80,17 @@ on:
         description: "Limpar programação: tudo = cancela tudo que ainda não saiu; ou os códigos separados por vírgula"
         required: false
         default: ""
+      garimpar:
+        description: "sim = só busca produtos novos pro painel (botão 🔄 Atualizar garimpo). Não posta nada"
+        required: false
+        default: ""
 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
 # Rodadas normais: uma de cada vez. O GitHub só guarda UMA rodada esperando por grupo
 # (a mais nova substitui a anterior), por isso o "Postar agora / formulário / cancelar" do painel
 # ganha um grupo próprio por execução: assim nenhum pedido mandado do painel se perde na fila.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.link != '' || inputs.cancelar != '') && format('postar-painel-{0}', github.run_id) || 'postar' }}
+  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.link != '' || inputs.cancelar != '' || inputs.garimpar != '') && format('postar-painel-{0}', github.run_id) || 'postar' }}
   cancel-in-progress: false
 
 permissions:
@@ -125,6 +130,7 @@ jobs:
           OFERTA_MODO: ${{ inputs.perfil == 'ingrid' && inputs.modo || '' }}
           OFERTA_HORARIO: ${{ inputs.perfil == 'ingrid' && inputs.horario || '' }}
           OFERTA_CANCELAR: ${{ inputs.perfil == 'ingrid' && inputs.cancelar || '' }}
+          OFERTA_GARIMPAR: ${{ inputs.perfil == 'ingrid' && inputs.garimpar || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -186,6 +192,7 @@ jobs:
           OFERTA_MODO: ${{ inputs.perfil == 'blackfriday' && inputs.modo || '' }}
           OFERTA_HORARIO: ${{ inputs.perfil == 'blackfriday' && inputs.horario || '' }}
           OFERTA_CANCELAR: ${{ inputs.perfil == 'blackfriday' && inputs.cancelar || '' }}
+          OFERTA_GARIMPAR: ${{ inputs.perfil == 'blackfriday' && inputs.garimpar || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BF }}
