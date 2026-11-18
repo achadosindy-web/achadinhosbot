@@ -84,7 +84,23 @@ if os.getenv("CATALOGO_PALAVRAS", "").strip():
 
 # ------------------------------- Shopee --------------------------------------
 def shopee_mais_vendidos(palavra: str) -> list[dict]:
-    """productOfferV2 ordenado por vendas (sortType 2), igual ao que o robô já usa."""
+    """productOfferV2 ordenado por vendas (sortType 2), igual ao que o robô já usa.
+    18/11: a Shopee às vezes responde "error 10000 System Error" quando recebe muitas buscas
+    seguidas. Agora o robô espera e tenta de novo (até 3 vezes), pedindo menos produtos."""
+    ultimo = None
+    for tentativa, (espera, limite) in enumerate([(0, POR_BUSCA), (4, 30), (10, 20)]):
+        if espera:
+            time.sleep(espera)
+        try:
+            return _shopee_consulta(palavra, limite)
+        except RuntimeError as e:
+            ultimo = e
+            if "10000" not in str(e):
+                raise
+    raise ultimo
+
+
+def _shopee_consulta(palavra: str, limite: int) -> list[dict]:
     import requests
     query = """
     query($keyword: String, $limit: Int, $sortType: Int) {
@@ -96,7 +112,7 @@ def shopee_mais_vendidos(palavra: str) -> list[dict]:
       }
     }"""
     corpo = json.dumps({"query": query,
-                        "variables": {"keyword": palavra, "limit": POR_BUSCA, "sortType": 2}},
+                        "variables": {"keyword": palavra, "limit": limite, "sortType": 2}},
                        separators=(",", ":"))
     ts = str(int(time.time()))
     assinatura = hashlib.sha256((SHOPEE_APP_ID + ts + corpo + SHOPEE_SECRET).encode()).hexdigest()
@@ -154,14 +170,16 @@ def buscar_shopee() -> list[dict]:
                 print(f"[aviso] Shopee '{palavra}': {e}")
                 continue
             bons = 0
+            maior = max((int(n.get("sales") or 0) for n in nos), default=0)
             for n in nos:
                 it = item_shopee(n, cat)
                 if not it or it["vendas"] < VENDAS_MIN or (it["nota"] and it["nota"] < NOTA_MIN):
                     continue
                 achados.setdefault(it["id"], it)
                 bons += 1
-            print(f"[catalogo] Shopee {cat} / '{palavra}': {len(nos)} vieram, {bons} passaram no filtro")
-            time.sleep(1)                       # respiro pra API
+            print(f"[catalogo] Shopee {cat} / '{palavra}': {len(nos)} vieram, {bons} passaram no filtro "
+                  f"(o mais vendido tinha {maior} vendas)")
+            time.sleep(2)                       # respiro pra API (com 1s ela dava "System Error")
     saida, vistos = [], set()
     for cat, achados in por_cat.items():
         lista = sorted(achados.values(), key=lambda i: -i["vendas"])
