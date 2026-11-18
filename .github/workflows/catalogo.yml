@@ -1,0 +1,73 @@
+# Catálogo Viral: atualiza o catalogo.json da página catalogo.html (repositório "grupo").
+# NÃO posta nada no grupo e NÃO mexe no postar.yml, no bot.py nem no garimpo.
+#
+# Roda sozinho 3 vezes por dia (8h40, 13h40 e 18h40 de Brasília) e quando vocês quiserem:
+# Actions > Atualizar catálogo > Run workflow.
+# São só 3 rodadas curtas por dia pra não gastar os minutos grátis do GitHub.
+name: Atualizar catálogo
+
+on:
+  schedule:
+    - cron: "40 11,16,21 * * *"      # UTC (+3h): 8h40, 13h40 e 18h40 em Brasília
+  workflow_dispatch:
+
+concurrency:
+  group: catalogo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  catalogo:
+    runs-on: ubuntu-latest
+    env:
+      TEM_PAGINA: ${{ secrets.PAGINA_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+
+      - name: Montar o catálogo
+        env:
+          SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
+          SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
+          CATALOGO_VENDAS_MIN: "5000"      # 18/11: só produto que já vendeu 5 mil ou mais
+          CATALOGO_NOTA_MIN: "4.5"         # estrelas
+          CATALOGO_POR_CATEGORIA: "40"     # quantos produtos por categoria
+          # Comissão da Amazon por categoria (%), da tabela oficial do Associados (conferida em 18/11:
+          # Beleza e Bebê 13%, Roupas 11%, Eletrônicos e Eletrodomésticos 8%, Bolsas/Calçados e Outros 7%).
+          # Moda ficou em 7% (bolsa e calçado pagam menos que roupa). Casa e Fitness: confira na tabela e coloque aqui.
+          CATALOGO_COMISSAO_AMAZON: "Beleza:13,Bebê:13,Eletrônicos:8,Eletrodomésticos:8,Moda:7,Outros:7"
+        run: python catalogo.py
+
+      - name: Abrir repositório da página
+        if: env.TEM_PAGINA == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: achadosindy-web/grupo
+          token: ${{ secrets.PAGINA_TOKEN }}
+          path: pagina
+
+      - name: Publicar catálogo
+        if: env.TEM_PAGINA == 'true'
+        run: |
+          [ -f catalogo.json ] || { echo "sem catalogo.json"; exit 0; }
+          cp catalogo.json pagina/
+          cd pagina
+          git config user.name "achadinhos-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add catalogo.json
+          if git diff --cached --quiet; then echo "catálogo igual, nada pra publicar"; exit 0; fi
+          git commit -q -m "catálogo atualizado"
+          # O postar.yml também publica nesse repositório: se ele salvou junto, pega o dele e tenta de novo
+          ramo=$(git rev-parse --abbrev-ref HEAD)
+          for i in 1 2 3 4 5; do
+            git pull -q --rebase origin "$ramo" && git push -q origin "HEAD:$ramo" && { echo "catálogo publicado"; break; }
+            echo "tentativa $i não deu, tentando de novo..."
+            sleep $((i * 5))
+          done
