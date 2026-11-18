@@ -17,8 +17,16 @@
 #   - Pra desfazer: volte o schedule antigo e troque MAX_TOTAL_RODADA da BF pra "5".
 #
 # 06/11 - API da Shopee ligada (segredos SHOPEE_APP_ID e SHOPEE_SECRET).
-#   A cada rodada o robô sorteia 3 palavras de PALAVRAS e busca na Shopee; os achados vão pro painel.
+#   A cada rodada o robô busca na Shopee algumas palavras pelos mais vendidos (SHOPEE_MAIS_VENDIDOS),
+#   algumas pela maior comissão (SHOPEE_COMISSAO) e, na BF, os destaques da Shopee. Os achados vão pro painel.
 #   Pra trocar o que ele busca: edite a linha PALAVRAS de cada perfil (separado por vírgula, entre aspas).
+#
+# 18/11 - PROGRAMAÇÃO QUE NÃO SOME:
+#   - Cada programação tem um código (coluna fila_id no ofertas.csv). O "Guardar histórico" junta
+#     a fila por esse código, não mais pelo link (o link juntava programação nova com post antigo).
+#   - Novo campo "cancelar" (botão "Limpar programação" e "✕" do painel): "tudo" ou os códigos.
+#   - "horario" aceita dia e hora: "2026-11-20T19".
+#   - Mais palavras da Shopee no painel da Indy e da BF: por rodada, 4 pelos mais vendidos + 2 pela maior comissão.
 name: Postar achadinhos
 
 on:
@@ -36,7 +44,7 @@ on:
         type: choice
         options: [todos, ingrid, geral, blackfriday]
         default: todos
-      # Formulário "Postar algo que vi" do painel (vai pro grupo do perfil escolhido)
+      # Formulário "Postar algo que vi" do painel e botões do catálogo (vai pro grupo do perfil escolhido)
       link:
         description: "Link do produto (opcional)"
         required: false
@@ -64,16 +72,20 @@ on:
         type: choice
         options: [agora, guardar]
       horario:
-        description: "Formulário: hora em que o post sai (9, 12, 15, 19 ou 21). Vazio = próximo horário"
+        description: "Formulário: quando o post sai. Hora (19) ou dia e hora (2026-11-20T19). Vazio = próximo horário"
+        required: false
+        default: ""
+      cancelar:
+        description: "Limpar programação: tudo = cancela tudo que ainda não saiu; ou os códigos separados por vírgula"
         required: false
         default: ""
 
 # Nunca roda duas rodadas ao mesmo tempo (a segunda espera a primeira terminar)
 # Rodadas normais: uma de cada vez. O GitHub só guarda UMA rodada esperando por grupo
-# (a mais nova substitui a anterior), por isso o "Postar agora / formulário" do painel
-# ganha um grupo próprio por execução: assim nenhum produto mandado do painel se perde na fila.
+# (a mais nova substitui a anterior), por isso o "Postar agora / formulário / cancelar" do painel
+# ganha um grupo próprio por execução: assim nenhum pedido mandado do painel se perde na fila.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.link != '' && format('postar-painel-{0}', github.run_id) || 'postar' }}
+  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.link != '' || inputs.cancelar != '') && format('postar-painel-{0}', github.run_id) || 'postar' }}
   cancel-in-progress: false
 
 permissions:
@@ -112,6 +124,7 @@ jobs:
           OFERTA_CUPOM: ${{ inputs.perfil == 'ingrid' && inputs.cupom || '' }}
           OFERTA_MODO: ${{ inputs.perfil == 'ingrid' && inputs.modo || '' }}
           OFERTA_HORARIO: ${{ inputs.perfil == 'ingrid' && inputs.horario || '' }}
+          OFERTA_CANCELAR: ${{ inputs.perfil == 'ingrid' && inputs.cancelar || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -124,8 +137,10 @@ jobs:
           GREEN_URL: ${{ secrets.GREEN_URL }}
           OFERTAS_POR_RODADA: "2"
           RADAR_MODO: "painel"      # painel | aprovar | auto | desligado
-          # 06/11: palavras que o robô busca na Shopee (sorteia 3 por rodada). Moda fitness, moda, beleza e casa.
-          PALAVRAS: "legging fitness cintura alta,legging empina bumbum,conjunto fitness feminino,conjunto legging e top,top academia com bojo,top fitness nadador,short academia feminino,short saia fitness,bermuda ciclista feminina,macaquinho fitness,macacao fitness feminino,regata academia feminina,cropped academia,jaqueta corta vento feminina,sutia esportivo alta sustentacao,meia academia feminina,tenis academia feminino,tenis corrida feminino,bolsa academia feminina,mochila academia,garrafa termica academia,garrafa motivacional 2 litros,coqueteleira,elastico extensor exercicio,kit mini band elastico,tapete yoga,caneleira peso,halter emborrachado,corda de pular,cinta modeladora,body feminino,vestido midi feminino,vestido canelado,blusa feminina basica,calca pantalona feminina,conjunto alfaiataria feminino,sandalia feminina,skincare kit,serum vitamina c,protetor solar facial,hidratante corporal,escova secadora,kit maquiagem,perfume feminino,organizador cozinha,pote hermetico vidro,organizador guarda roupa,utensilios cozinha silicone,toalha de banho,jogo de cama casal"
+          # 06/11 + 18/11: palavras que o robô busca na Shopee. Moda fitness, moda, beleza e casa.
+          SHOPEE_MAIS_VENDIDOS: "4"   # 18/11: palavras buscadas pelos mais vendidos (antes 2)
+          SHOPEE_COMISSAO: "2"        # 18/11: palavras buscadas pela maior comissão (antes 1)
+          PALAVRAS: "legging fitness cintura alta,legging empina bumbum,conjunto fitness feminino,conjunto legging e top,top academia com bojo,top fitness nadador,short academia feminino,short saia fitness,bermuda ciclista feminina,macaquinho fitness,macacao fitness feminino,regata academia feminina,cropped academia,jaqueta corta vento feminina,sutia esportivo alta sustentacao,meia academia feminina,tenis academia feminino,tenis corrida feminino,bolsa academia feminina,mochila academia,garrafa termica academia,garrafa motivacional 2 litros,coqueteleira,elastico extensor exercicio,kit mini band elastico,tapete yoga,caneleira peso,halter emborrachado,corda de pular,cinta modeladora,body feminino,vestido midi feminino,vestido canelado,blusa feminina basica,calca pantalona feminina,conjunto alfaiataria feminino,sandalia feminina,skincare kit,serum vitamina c,protetor solar facial,hidratante corporal,escova secadora,kit maquiagem,perfume feminino,organizador cozinha,pote hermetico vidro,organizador guarda roupa,utensilios cozinha silicone,toalha de banho,jogo de cama casal,calca wide leg,saia midi,cropped feminino,pijama feminino,bolsa transversal,brinco feminino,oculos de sol feminino,base liquida,paleta de sombra,batom matte,mascara de cilios,chapinha prancha,body splash,organizador de gaveta,copo termico,tapete sala,luminaria led,difusor de aromas,porta temperos,cabide veludo,caixa organizadora,mop giratorio"
           # 30/10: + ofertasEcuponsSheinBR (teste de canal da Shein; se der "0 posts lidos" no log, tirar)
           RADAR_CANAIS: "urubupromo,pobregram,pelandobr,promotop,Postou_Achou,fitcomestilo_ofertas,ofertafitness,grupodeachadinhos,achadinhosdavava,achadoscasaedecor,achadosfitnessbr,achadosshopebrasil,guerradealsfit,ofertasEcuponsSheinBR"
         run: python bot.py
@@ -138,6 +153,7 @@ jobs:
         continue-on-error: true
         env:
           PERFIL: geral
+          OFERTA_CANCELAR: ${{ inputs.perfil == 'geral' && inputs.cancelar || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_GERAL }}
@@ -169,6 +185,7 @@ jobs:
           OFERTA_CUPOM: ${{ inputs.perfil == 'blackfriday' && inputs.cupom || '' }}
           OFERTA_MODO: ${{ inputs.perfil == 'blackfriday' && inputs.modo || '' }}
           OFERTA_HORARIO: ${{ inputs.perfil == 'blackfriday' && inputs.horario || '' }}
+          OFERTA_CANCELAR: ${{ inputs.perfil == 'blackfriday' && inputs.cancelar || '' }}
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN_BF }}
@@ -196,8 +213,10 @@ jobs:
           # Grupos de WhatsApp que o número do robô lê como fonte (formato Nome=codigo@g.us). Fica no segredo RADAR_GRUPOS_ZAP.
           RADAR_GRUPOS_ZAP: ${{ secrets.RADAR_GRUPOS_ZAP }}
           # 06/11: palavras mais específicas (ex.: "fritadeira air fryer 5 litros" em vez de "air fryer",
-          # que trazia só forminha). O robô sorteia 3 por rodada e busca na Shopee.
-          PALAVRAS: "fritadeira air fryer 5 litros,air fryer oven forno eletrico,smart tv 50 polegadas,smart tv 43 polegadas,fone bluetooth jbl,fone de ouvido sem fio,smartwatch feminino,smartwatch masculino,celular xiaomi redmi,tablet android,notebook,aspirador robo,aspirador de po vertical,cafeteira expresso,cafeteira dolce gusto,liquidificador alta potencia,mixer de mao,batedeira planetaria,panela eletrica de arroz,panela de pressao eletrica,sanduicheira grill,micro-ondas 20 litros,purificador de agua,ventilador de coluna,climatizador de ar,secador de cabelo profissional,chapinha prancha cabelo,escova secadora,barbeador eletrico,caixa de som bluetooth,soundbar,carregador turbo celular,power bank,camera de seguranca wifi,lampada inteligente wifi,mouse e teclado sem fio,jogo de panelas antiaderente,jogo de facas inox,jogo de cama queen,edredom casal,travesseiro nasa,mala de viagem media,mochila notebook,perfume importado feminino,perfume importado masculino,kit maquiagem completo,tenis corrida masculino,tenis feminino casual,brinquedo educativo infantil,boneca infantil,carrinho controle remoto"
+          # que trazia só forminha). 18/11: + eletro, games e casa.
+          SHOPEE_MAIS_VENDIDOS: "4"   # 18/11: palavras buscadas pelos mais vendidos (antes 2)
+          SHOPEE_COMISSAO: "2"        # 18/11: palavras buscadas pela maior comissão (antes 1)
+          PALAVRAS: "fritadeira air fryer 5 litros,air fryer oven forno eletrico,smart tv 50 polegadas,smart tv 43 polegadas,fone bluetooth jbl,fone de ouvido sem fio,smartwatch feminino,smartwatch masculino,celular xiaomi redmi,tablet android,notebook,aspirador robo,aspirador de po vertical,cafeteira expresso,cafeteira dolce gusto,liquidificador alta potencia,mixer de mao,batedeira planetaria,panela eletrica de arroz,panela de pressao eletrica,sanduicheira grill,micro-ondas 20 litros,purificador de agua,ventilador de coluna,climatizador de ar,secador de cabelo profissional,chapinha prancha cabelo,escova secadora,barbeador eletrico,caixa de som bluetooth,soundbar,carregador turbo celular,power bank,camera de seguranca wifi,lampada inteligente wifi,mouse e teclado sem fio,jogo de panelas antiaderente,jogo de facas inox,jogo de cama queen,edredom casal,travesseiro nasa,mala de viagem media,mochila notebook,perfume importado feminino,perfume importado masculino,kit maquiagem completo,tenis corrida masculino,tenis feminino casual,brinquedo educativo infantil,boneca infantil,carrinho controle remoto,chaleira eletrica,ferro de passar a vapor,echo dot alexa,kindle,smart tv 32 polegadas,monitor gamer,headset gamer,cadeira gamer,mini processador eletrico,forno eletrico 45 litros,garrafa termica inox,kit skincare,toalha de banho jogo,mala de bordo,blocos de montar,patinete eletrico,ring light"
           # Só canais que o robô consegue ler (os que davam "0 posts lidos" saíram em 24/10).
           # Eletro/casa: gtOFERTAS, promo_imperdivel, vrlofertas, ctofertaseletroetv (CT Ofertas Eletro e TV),
           # ofertas_harpyja (eletroportáteis Amazon), escolhasegura, cacadoresofertas, cupons_desconto (Promobit)
@@ -208,18 +227,121 @@ jobs:
 
       - name: Guardar histórico (evita repetir oferta)
         if: always()
+        # 07/11: antes, quando várias rodadas salvavam ao mesmo tempo (ex.: vários "Programar"
+        # seguidos no painel), a última passava por cima das outras e a fila de programados sumia.
+        # Agora o robô JUNTA a fila (ofertas.csv) e o histórico com o que já está salvo, sem apagar nada.
+        # 18/11: a fila é juntada pelo CÓDIGO de cada programação (fila_id). Antes era pelo link, e uma
+        # programação nova de um produto que já tinha saído virava "postada" ao juntar com a linha velha.
         run: |
           git config user.name "achadinhos-bot"
           git config user.email "bot@users.noreply.github.com"
-          for f in historico.json ofertas.csv vitrine.json garimpo.json; do if [ -f "$f" ]; then git add "$f"; fi; done
-          if [ -d perfis ]; then git add perfis; fi
-          git diff --cached --quiet || git commit -m "histórico de postagens"
-          # Tenta salvar até 5 vezes; se alguém mexeu no repositório nesse meio-tempo,
-          # junta as mudanças antes (o histórico desta rodada tem prioridade).
+          mudados=$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
+                     | grep -E '(^|/)(historico\.json|ofertas\.csv|vitrine\.json|garimpo\.json)$' | sort -u || true )
+          if [ -z "$mudados" ]; then echo "nada novo pra salvar"; exit 0; fi
+          echo "arquivos desta rodada: $mudados"
+          rm -rf /tmp/meus && mkdir -p /tmp/meus
+          for f in $mudados; do mkdir -p "/tmp/meus/$(dirname "$f")"; cp "$f" "/tmp/meus/$f"; done
+          cat > /tmp/juntar.py <<'EOF'
+          import csv, json, os, shutil, sys
+          salvos, arquivos = sys.argv[1], sys.argv[2:]
+
+          def ler_csv(p):
+              if not os.path.exists(p) or os.path.getsize(p) == 0:
+                  return [], []
+              with open(p, encoding="utf-8") as f:
+                  r = csv.DictReader(f)
+                  return list(r.fieldnames or []), list(r)
+
+          def chave(l):
+              # cada programação tem seu código; linha antiga (sem código) = link + dia/hora
+              fid = (l.get("fila_id") or "").strip()
+              return "id:" + fid if fid else "l:" + (l.get("link") or "").strip() + "|" + (l.get("quando") or "").strip()
+
+          def situacao(*valores):
+              v = {(x or "").strip().lower() for x in valores}
+              return "sim" if "sim" in v else "cancelado" if "cancelado" in v else ""
+
+          pastas = set()
+          for f in arquivos:
+              meu = os.path.join(salvos, f)
+              if not os.path.exists(meu):
+                  continue
+              pastas.add(os.path.dirname(f))
+              if f.endswith("ofertas.csv"):
+                  c1, deles = ler_csv(f)
+                  c2, meus = ler_csv(meu)
+                  campos = c1 + [c for c in c2 if c not in c1]
+                  fila, ordem = {}, []
+                  for l in deles + meus:
+                      if not (l.get("link") or "").strip():
+                          continue
+                      k = chave(l)
+                      if k not in fila:
+                          fila[k] = dict(l)
+                          ordem.append(k)
+                          continue
+                      atual = fila[k]
+                      fim = situacao(atual.get("postado"), l.get("postado"))
+                      atual.update({c: v for c, v in l.items() if v})
+                      atual["postado"] = fim
+                  with open(f, "w", encoding="utf-8", newline="") as s:
+                      w = csv.DictWriter(s, fieldnames=campos, extrasaction="ignore")
+                      w.writeheader()
+                      w.writerows(fila[k] for k in ordem)
+                  print(f"[juntar] {f}: {len(deles)} já salvas + {len(meus)} desta rodada = {len(ordem)}")
+              elif f.endswith("historico.json"):
+                  try:
+                      deles = json.load(open(f, encoding="utf-8"))
+                  except Exception:
+                      deles = {}
+                  meus = json.load(open(meu, encoding="utf-8"))
+                  for k, v in deles.items():
+                      m = meus.get(k)
+                      if k not in meus:
+                          meus[k] = v
+                      elif isinstance(v, (int, float)) and isinstance(m, (int, float)):
+                          meus[k] = max(v, m)
+                      elif isinstance(v, list) and isinstance(m, list):
+                          meus[k] = (v + [x for x in m if x not in v])[-500:]
+                  with open(f, "w", encoding="utf-8") as s:
+                      json.dump(meus, s, indent=1)
+              else:
+                  shutil.copyfile(meu, f)
+
+          # Lista "Programados" do painel = o que está na fila e ainda não saiu nem foi cancelado
+          for p in pastas:
+              csv_p, gar_p = os.path.join(p, "ofertas.csv"), os.path.join(p, "garimpo.json")
+              if not (os.path.exists(csv_p) and os.path.exists(gar_p)):
+                  continue
+              try:
+                  dados = json.load(open(gar_p, encoding="utf-8"))
+              except Exception:
+                  continue
+              agenda = []
+              for l in ler_csv(csv_p)[1]:
+                  if not (l.get("link") or "").strip() or (l.get("postado") or "").strip().lower() in ("sim", "cancelado"):
+                      continue
+                  try:
+                      preco = float((l.get("preco") or "0").replace(",", "."))
+                  except ValueError:
+                      preco = 0
+                  agenda.append({"produto": (l.get("produto") or "").strip(), "loja": (l.get("loja") or "").strip() or "Oferta",
+                                 "preco": preco, "quando": (l.get("quando") or "").strip(),
+                                 "fila_id": (l.get("fila_id") or "").strip()})
+              dados["agenda"] = agenda
+              with open(gar_p, "w", encoding="utf-8") as s:
+                  json.dump(dados, s, ensure_ascii=False, indent=1)
+              print(f"[juntar] {gar_p}: {len(agenda)} programado(s) na lista do painel")
+          EOF
+          # Tenta salvar até 5 vezes: pega o que já está salvo, junta com esta rodada e envia.
           for i in 1 2 3 4 5; do
-            git pull --rebase -X theirs origin main && git push origin HEAD:main && break
+            git fetch -q origin main && git reset -q --hard origin/main
+            python3 /tmp/juntar.py /tmp/meus $mudados
+            for f in historico.json ofertas.csv vitrine.json garimpo.json; do if [ -f "$f" ]; then git add "$f"; fi; done
+            if [ -d perfis ]; then git add perfis; fi
+            if git diff --cached --quiet; then echo "nada novo pra salvar"; break; fi
+            git commit -q -m "histórico de postagens" && git push origin HEAD:main && break
             echo "não consegui salvar o histórico (tentativa $i), tentando de novo..."
-            git rebase --abort 2>/dev/null || true
             sleep $((i * 5))
           done
 

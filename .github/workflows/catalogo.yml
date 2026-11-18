@@ -36,7 +36,7 @@ jobs:
         env:
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_SECRET: ${{ secrets.SHOPEE_SECRET }}
-          CATALOGO_VENDAS_MIN: "5000"      # 18/11: só produto que já vendeu 5 mil ou mais
+          CATALOGO_VENDAS_MIN: "1000"      # 18/11: 1 mil ou mais (com 5 mil quase não sobrava fitness). Selo "🔥 viral" continua em 10 mil
           CATALOGO_NOTA_MIN: "4.5"         # estrelas
           CATALOGO_POR_CATEGORIA: "40"     # quantos produtos por categoria
           # Comissão da Amazon por categoria (%), da tabela oficial do Associados (conferida em 18/11:
