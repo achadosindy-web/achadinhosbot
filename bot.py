@@ -11,6 +11,24 @@ Telegram; voce so copia e cola no grupo/canal do WhatsApp (leva 10 segundos).
 
 Rodar:  python bot.py            (posta de verdade)
         python bot.py --teste    (so mostra no terminal, nao posta nada)
+
+10/11: fila de programados destravada.
+  - Os programados saem na ordem do horário (o mais antigo primeiro), não mais pelo maior desconto.
+  - Programado que não pode sair (sem foto, desconto acima de 90%, erro 2 vezes seguidas)
+    sai da fila e o robô avisa no Telegram. Antes ele ficava em primeiro da fila pra sempre e,
+    com 1 post por rodada, travava todos os outros.
+  - O que vocês programaram sai mesmo que o mesmo produto já tenha passado nos últimos 7 dias.
+  - Linha com preço quebrado no ofertas.csv não derruba mais a rodada inteira.
+
+18/11: programação que não some mais.
+  - Cada programação ganha um código próprio (coluna fila_id). Antes a fila era juntada pelo link:
+    produto que já tinha saído uma vez "grudava" na linha antiga e a programação nova nascia como
+    postada; e o mesmo produto em dois dias diferentes virava um só.
+  - Dá pra programar com DIA e hora (até a semana toda): horario "2026-11-20T19" ou "-d20261120-h19".
+  - Botão de limpar programação: input "cancelar" = "tudo" ou os códigos separados por vírgula.
+    O que é cancelado fica marcado como "cancelado" no ofertas.csv (não sai e não volta).
+  - Junto com a busca da Shopee de 06/11 (mais vendidos + maior comissão + destaques na BF).
+    Quantas palavras por rodada: SHOPEE_MAIS_VENDIDOS e SHOPEE_COMISSAO no postar.yml.
 """
 
 import csv
@@ -111,6 +129,8 @@ SHOPEE_COMISSAO = int(os.getenv("SHOPEE_COMISSAO", "1"))             # palavras 
 SHOPEE_DESTAQUES = os.getenv("SHOPEE_DESTAQUES", "sim" if PERFIL == "blackfriday" else "nao"
                              ).strip().lower() in ("sim", "1", "true")
 BR = timezone(timedelta(hours=-3))
+# Situações da coluna "postado" que tiram a linha da fila
+FORA_DA_FILA = ("sim", "cancelado")
 
 
 # ------------------------------- Shopee --------------------------------------
@@ -195,6 +215,10 @@ def buscas_da_shopee() -> list[tuple[str, int | None, int | None, str]]:
 
 
 # --------------------------- Ofertas manuais ---------------------------------
+def _fora_da_fila(l: dict) -> bool:
+    return (l.get("postado") or "").strip().lower() in FORA_DA_FILA
+
+
 def ler_manuais() -> list[dict]:
     """ofertas.csv: Mercado Livre, Amazon ou qualquer link de afiliado seu."""
     if not OFERTAS_MANUAIS.exists():
@@ -202,14 +226,23 @@ def ler_manuais() -> list[dict]:
     ofertas = []
     with open(OFERTAS_MANUAIS, encoding="utf-8") as f:
         for i, l in enumerate(csv.DictReader(f)):
-            if not (l.get("link") or "").strip() or l.get("postado", "").strip().lower() == "sim":
+            if not (l.get("link") or "").strip() or _fora_da_fila(l):
                 continue
-            preco = float(l["preco"].replace(",", "."))
-            antes = float((l.get("preco_antes") or "0").replace(",", ".") or 0)
+            # 10/11: linha com preço quebrado não derruba mais a rodada inteira
+            try:
+                preco = float((l.get("preco") or "").replace(",", "."))
+                antes = float((l.get("preco_antes") or "0").replace(",", ".") or 0)
+            except ValueError:
+                print(f"[aviso] preço inválido na fila, pulei: {(l.get('produto') or '')[:50]} "
+                      f"(preço '{l.get('preco')}')")
+                continue
+            fila_id = (l.get("fila_id") or "").strip()
+            quando = (l.get("quando") or "").strip()   # "2026-10-29T19:00" = programado; vazio = próximo horário
             ofertas.append({
-                "id": "manual-" + hashlib.md5(l["link"].encode()).hexdigest()[:10],
-                "loja": l.get("loja", "").strip() or "Oferta",
-                "nome": l["produto"].strip(),
+                "id": "manual-" + hashlib.md5((fila_id or l["link"] + quando).encode()).hexdigest()[:10],
+                "fila_id": fila_id,
+                "loja": (l.get("loja") or "").strip() or "Oferta",
+                "nome": (l.get("produto") or "").strip() or "Achadinho do dia",
                 "preco": preco,
                 "preco_antes": antes,
                 "desconto": round((1 - preco / antes) * 100) if antes > preco else 0,
@@ -217,7 +250,7 @@ def ler_manuais() -> list[dict]:
                 "imagem": (l.get("imagem") or "").strip() or None,
                 "link": l["link"].strip(),
                 "cupom": (l.get("cupom") or "").strip(),
-                "quando": (l.get("quando") or "").strip(),   # "2026-10-29T19:00" = programado; vazio = próximo horário
+                "quando": quando,
                 "manual": True,
             })
     return ofertas
@@ -251,15 +284,20 @@ def escolher(ofertas: list[dict], historico: dict) -> list[dict]:
     corte = time.time() - DIAS_SEM_REPETIR * 86400
     boas = []
     for o in ofertas:
-        if historico.get(o["id"], 0) > corte:
+        # 10/11: o que vocês programaram sai mesmo que o produto já tenha passado nos últimos dias
+        # (antes ficava preso na lista de programados pra sempre, sem sair e sem sumir)
+        if not o.get("manual") and historico.get(o["id"], 0) > corte:
             continue
         if not o.get("manual") and not o.get("radar") and (o["desconto"] < DESCONTO_MINIMO
                                     or o["nota"] < NOTA_MINIMA
                                     or o["vendas"] < VENDAS_MINIMAS):
             continue
         boas.append(o)
-    # manuais primeiro (voce escolheu a dedo), depois as melhores da Shopee
-    boas.sort(key=lambda o: (not o.get("manual"), not o.get("radar"), -pontuar(o)))
+    # manuais primeiro (voce escolheu a dedo), depois as melhores da Shopee.
+    # 10/11: entre as manuais, a ordem é a do horário programado (o mais antigo sai primeiro).
+    boas.sort(key=lambda o: (not o.get("manual"), not o.get("radar"),
+                             (o.get("quando") or "0") if o.get("manual") else "",
+                             -pontuar(o)))
     # Aprovadas por vocês (manuais) saem todas, até MAX_APROVADAS;
     # as automáticas (radar/Shopee) preenchem até OFERTAS_POR_RODADA.
     # Variedade nas automáticas: 1 por tipo de produto na rodada, o mesmo tipo só volta
@@ -629,18 +667,86 @@ def listar_grupos_whatsapp() -> str:
             "\n\nCopie o código do grupo (termina em -group) para o segredo WHATSAPP_GRUPO (no perfil geral, WHATSAPP_GRUPO_GERAL; vários grupos separados por vírgula).")
 
 
-def marcar_manual_postada(link: str) -> None:
-    linhas = list(csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8")))
-    campos = list(linhas[0].keys()) if linhas else []
-    if "postado" not in campos:
-        campos.append("postado")
-    for l in linhas:
-        if l["link"].strip() == link:
-            l["postado"] = "sim"
+def _ler_fila_csv() -> tuple[list[str], list[dict]]:
+    if not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0:
+        return list(CAMPOS_FILA), []
+    with open(OFERTAS_MANUAIS, encoding="utf-8") as f:
+        leitor = csv.DictReader(f)
+        return list(leitor.fieldnames or []), list(leitor)
+
+
+def _gravar_fila_csv(campos: list[str], linhas: list[dict]) -> None:
+    for c in CAMPOS_FILA:
+        if c not in campos:
+            campos.append(c)
     with open(OFERTAS_MANUAIS, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=campos)
+        w = csv.DictWriter(f, fieldnames=campos, extrasaction="ignore")
         w.writeheader()
         w.writerows(linhas)
+
+
+def marcar_manual_postada(link: str, fila_id: str = "", quando: str | None = None, valor: str = "sim") -> None:
+    """Marca como saída SÓ a programação certa (pelo código dela).
+    18/11: antes marcava todas as linhas com o mesmo link, inclusive as de outros dias."""
+    campos, linhas = _ler_fila_csv()
+    for l in linhas:
+        if _fora_da_fila(l):
+            continue
+        if fila_id:
+            certo = (l.get("fila_id") or "").strip() == fila_id
+        else:
+            certo = (l.get("link") or "").strip() == link and \
+                    (quando is None or (l.get("quando") or "").strip() == (quando or ""))
+        if certo:
+            l["postado"] = valor
+    _gravar_fila_csv(campos, linhas)
+
+
+def tirar_da_fila(o: dict, motivo: str) -> None:
+    """10/11: programado que não pode sair deixa a fila (e avisa no Telegram).
+    Antes ele ficava em primeiro da fila pra sempre e travava todos os outros."""
+    print(f"[pulei] {motivo}: {o['nome'][:60]}")
+    if not o.get("manual"):
+        return
+    try:
+        marcar_manual_postada(o["link"], o.get("fila_id", ""), o.get("quando", ""))
+    except Exception as e:
+        print(f"[aviso] não consegui tirar da fila: {e}")
+    aviso = (f"⚠️ Tirei da fila de programados (NÃO foi pro grupo):\n{o['nome'][:80]}\n"
+             f"Motivo: {motivo}.\n\nSe quiser que ele saia, programe de novo pelo painel.")
+    for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+        try:
+            telegram(chat, aviso, None)
+        except Exception as e:
+            print(f"[aviso] não consegui avisar {chat}: {e} (mande /start pro robô)")
+
+
+def cancelar_programados(pedido: str) -> int:
+    """18/11: botão "Limpar programação" do painel.
+    pedido = "tudo" (tudo que ainda não saiu) ou códigos (fila_id) separados por vírgula."""
+    pedido = (pedido or "").strip()
+    if not pedido:
+        return 0
+    tudo = pedido.lower() in ("tudo", "todos", "todas")
+    codigos = {c.strip() for c in pedido.split(",") if c.strip()}
+    campos, linhas = _ler_fila_csv()
+    n, nomes = 0, []
+    for l in linhas:
+        if not (l.get("link") or "").strip() or _fora_da_fila(l):
+            continue
+        if tudo or (l.get("fila_id") or "").strip() in codigos:
+            l["postado"] = "cancelado"
+            n += 1
+            nomes.append((l.get("produto") or "")[:40])
+    if n:
+        _gravar_fila_csv(campos, linhas)
+    print(f"[agenda] {n} programação(ões) cancelada(s).")
+    if n:
+        texto = (f"🗑 Programação limpa: {n} post(s) cancelado(s)." if tudo else
+                 f"🗑 Cancelado ({n}): " + "; ".join(nomes))
+        for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+            _responder(chat, texto)
+    return n
 
 
 # ------------------- Modo rapido: ofertas mandadas pro bot -------------------
@@ -815,47 +921,71 @@ def _responder(chat, texto):
         pass
 
 
-CAMPOS_FILA = ["loja", "produto", "preco", "preco_antes", "cupom", "link", "imagem", "postado", "quando"]
+CAMPOS_FILA = ["loja", "produto", "preco", "preco_antes", "cupom", "link", "imagem", "postado", "quando", "fila_id"]
 
 
 def _campos_da_fila() -> list[str]:
-    """Cabeçalho do ofertas.csv. Se o arquivo é de antes da coluna 'quando', reescreve com ela."""
+    """Cabeçalho do ofertas.csv. Se o arquivo é de antes de alguma coluna nova, reescreve com ela."""
     if not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0:
-        return CAMPOS_FILA
-    with open(OFERTAS_MANUAIS, encoding="utf-8") as f:
-        leitor = csv.DictReader(f)
-        campos = list(leitor.fieldnames or [])
-        linhas = list(leitor)
-    faltam = [c for c in CAMPOS_FILA if c not in campos]
-    if faltam:
-        campos += faltam
-        with open(OFERTAS_MANUAIS, "w", encoding="utf-8", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=campos, extrasaction="ignore")
-            w.writeheader()
-            w.writerows(linhas)
+        return list(CAMPOS_FILA)
+    campos, linhas = _ler_fila_csv()
+    if [c for c in CAMPOS_FILA if c not in campos]:
+        _gravar_fila_csv(campos, linhas)
     return campos
 
 
-def quando_do_horario(hora) -> str:
-    """Hora escolhida (9, 12, 15, 19, 21) -> data e hora em que o post sai.
-    Hora que já passou hoje = amanhã nesse horário. Vazio/inválido = "" (próximo horário)."""
+_DIA_HORA = re.compile(r"^(\d{4})-?(\d{2})-?(\d{2})[T\s-]*h?(\d{1,2})(?::\d{2})?h?$", re.I)
+
+
+def quando_do_horario(hora, dia: str = "") -> str:
+    """Hora escolhida -> data e hora em que o post sai ("2026-11-20T19:00").
+      - "19"               -> hoje às 19h (ou amanhã, se já passou)
+      - "2026-11-20T19"    -> dia 20/11 às 19h  (18/11: dá pra programar a semana)
+      - hora="19", dia="20261120" -> idem
+    Data/hora que já passou, vazio ou inválido = "" (sai no próximo horário)."""
+    texto = str(hora or "").strip()
+    if dia and texto and "T" not in texto:
+        texto = f"{dia}T{texto}"
+    m = _DIA_HORA.match(texto)
+    agora = datetime.now(BR)
+    if m:
+        a, mes, d, h = (int(x) for x in m.groups())
+        try:
+            alvo = datetime(a, mes, d, h, 0, tzinfo=BR)
+        except ValueError:
+            return ""
+        if alvo <= agora:
+            return ""
+        return f"{alvo:%Y-%m-%d}T{h:02d}:00"
     try:
-        h = int(str(hora).strip().rstrip("h"))
+        h = int(texto.rstrip("hH"))
     except (TypeError, ValueError):
         return ""
     if not 0 <= h <= 23:
         return ""
-    agora = datetime.now(BR)
-    dia = agora if h > agora.hour else agora + timedelta(days=1)
-    return f"{dia:%Y-%m-%d}T{h:02d}:00"
+    data = agora if h > agora.hour else agora + timedelta(days=1)
+    return f"{data:%Y-%m-%d}T{h:02d}:00"
+
+
+_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 
 
 def _quando_legivel(quando: str) -> str:
     if not quando:
         return "no próximo horário"
-    hoje = datetime.now(BR).strftime("%Y-%m-%d")
+    hoje = datetime.now(BR).date()
     dia, hora = quando.split("T")
-    return f"{'hoje' if dia == hoje else 'amanhã' if dia > hoje else dia} às {int(hora[:2])}h"
+    try:
+        d = datetime.strptime(dia, "%Y-%m-%d").date()
+    except ValueError:
+        return quando
+    if d == hoje:
+        nome = "hoje"
+    elif d == hoje + timedelta(days=1):
+        nome = "amanhã"
+    else:
+        nome = f"{_SEMANA[d.weekday()]} {d:%d/%m}"
+    return f"{nome} às {int(hora[:2])}h"
 
 
 def ja_pode_sair(o: dict) -> bool:
@@ -871,14 +1001,38 @@ def escrever_agenda() -> None:
         dados = json.loads(GARIMPO.read_text(encoding="utf-8"))
     except Exception:
         return
-    dados["agenda"] = [{"produto": o["nome"], "loja": o["loja"], "preco": o["preco"], "quando": o.get("quando", "")}
+    dados["agenda"] = [{"produto": o["nome"], "loja": o["loja"], "preco": o["preco"],
+                        "quando": o.get("quando", ""), "fila_id": o.get("fila_id", "")}
                        for o in ler_manuais()]
     GARIMPO.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def _por_na_fila(oferta: dict, existentes: set) -> bool:
-    if oferta["link"] in existentes:
-        return False
+def _chave_fila(link: str, quando: str) -> str:
+    return f"{(link or '').strip()}|{(quando or '').strip()}"
+
+
+def _fila_aberta() -> dict:
+    """O que ainda está na fila (não saiu nem foi cancelado): "link|quando" -> código da programação."""
+    abertas = {}
+    for l in _ler_fila_csv()[1]:
+        if (l.get("link") or "").strip() and not _fora_da_fila(l):
+            abertas[_chave_fila(l.get("link"), l.get("quando"))] = (l.get("fila_id") or "").strip()
+    return abertas
+
+
+def _novo_fila_id() -> str:
+    return f"{int(time.time() * 1000):x}{random.randint(0, 0xfff):03x}"
+
+
+def _por_na_fila(oferta: dict, existentes: dict) -> str:
+    """Põe a oferta na fila com um código próprio. Devolve o código, ou "" se a MESMA
+    programação (mesmo link no mesmo dia e hora) já estava esperando.
+    18/11: produto que já saiu antes pode ser programado de novo, e o mesmo produto
+    pode ser programado em dias diferentes."""
+    chave = _chave_fila(oferta["link"], oferta.get("quando", ""))
+    if chave in existentes:
+        return ""
+    oferta = dict(oferta, fila_id=oferta.get("fila_id") or _novo_fila_id(), postado="")
     novo = not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0
     campos = _campos_da_fila()
     with open(OFERTAS_MANUAIS, "a", encoding="utf-8", newline="") as f:
@@ -886,13 +1040,13 @@ def _por_na_fila(oferta: dict, existentes: set) -> bool:
         if novo:
             w.writeheader()
         w.writerow(oferta)
-    existentes.add(oferta["link"])
-    return True
+    existentes[chave] = oferta["fila_id"]
+    return oferta["fila_id"]
 
 
 def oferta_do_formulario() -> str:
-    """Oferta preenchida no formulário "Postar algo que vi" do painel (chega pelo GitHub).
-    Devolve o link (já com a tag de vocês) que ficou na fila, ou "" se não entrou nada."""
+    """Oferta preenchida no formulário "Postar algo que vi" do painel (ou no catálogo), chega pelo GitHub.
+    Devolve o código (fila_id) da programação que ficou na fila, ou "" se não entrou nada."""
     link = os.getenv("OFERTA_LINK", "").strip()
     if not link:
         return ""
@@ -908,15 +1062,14 @@ def oferta_do_formulario() -> str:
         for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
             _responder(chat, f"⚠️ A oferta do painel não saiu: {problema}.")
         return ""
-    existentes = set()
-    if OFERTAS_MANUAIS.exists():
-        existentes = {l.get("link", "").strip() for l in csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8"))}
+    existentes = _fila_aberta()
     oferta["quando"] = quando
-    if not _por_na_fila(oferta, existentes):
-        print("[formulário] essa oferta já estava na fila.")
-        return oferta["link"]
-    print(f"[formulário] na fila: {oferta['produto']} ({oferta['loja']})")
-    return oferta["link"]
+    fila_id = _por_na_fila(oferta, existentes)
+    if not fila_id:
+        print("[formulário] essa programação já estava na fila.")
+        return existentes.get(_chave_fila(oferta["link"], quando), "") or "ja-na-fila"
+    print(f"[formulário] na fila: {oferta['produto']} ({oferta['loja']}) — sai {_quando_legivel(quando)}")
+    return fila_id
 
 
 def _radar_para_fila(o: dict) -> dict:
@@ -926,7 +1079,7 @@ def _radar_para_fila(o: dict) -> dict:
             "postado": ""}
 
 
-def _aprovar_radar(chat: str, texto: str, historico: dict, existentes: set) -> int:
+def _aprovar_radar(chat: str, texto: str, historico: dict, existentes: dict) -> int:
     pend = historico.get("_radar_pend", {})
     if not pend:
         _responder(chat, "Não tenho sugestões do radar esperando aprovação agora.")
@@ -1255,11 +1408,12 @@ def marcar_postados_no_garimpo(gids: list[str], historico: dict) -> None:
 _PREFIXOS = {"ml": "https://meli.la/", "sp": "https://s.shopee.com.br/", "az": "https://amzn.to/"}
 
 
-def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set) -> int:
-    m = re.match(r"^(ok|ml|sp|az)_([a-f0-9]{6})(?:_([A-Za-z0-9]+))?(?:-h(\d{1,2}))?$", comando)
+def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: dict) -> int:
+    # 18/11: "-d20261120" antes do "-h19" = programado pra esse dia
+    m = re.match(r"^(ok|ml|sp|az)_([a-f0-9]{6})(?:_([A-Za-z0-9]+))?(?:-d(\d{8}))?(?:-h(\d{1,2}))?$", comando)
     if not m:
         return -1
-    tipo, gid, codigo, hora = m.groups()
+    tipo, gid, codigo, dia, hora = m.groups()
     item = next((i for i in _ler_garimpo().get("itens", []) if i.get("gid") == gid), None)
     if not item:
         _responder(chat, "⚠️ Não achei esse achado no painel (ele pode ter saído, o painel guarda só 48h).")
@@ -1283,9 +1437,9 @@ def _aprovar_do_painel(chat: str, comando: str, historico: dict, existentes: set
     oferta = {"loja": item["loja"], "produto": item["nome"], "preco": f"{float(item['preco']):.2f}",
               "preco_antes": f"{float(item['preco_antes']):.2f}" if item.get("preco_antes") else "",
               "cupom": item.get("cupom", ""), "link": link, "imagem": item.get("imagem", ""), "postado": "",
-              "quando": quando_do_horario(hora) if hora else ""}
+              "quando": quando_do_horario(hora, dia or "") if hora else ""}
     if not _por_na_fila(oferta, existentes):
-        _responder(chat, "ℹ️ Esse achado já estava na fila.")
+        _responder(chat, f"ℹ️ Esse achado já estava programado pra {_quando_legivel(oferta['quando'])}.")
         return 0
     aprovados = historico.get("_aprovados", [])
     if gid not in aprovados:
@@ -1310,9 +1464,7 @@ def ler_caixa_do_bot(historico: dict) -> int:
     print(f"[caixa] {len(r.json().get('result', []))} mensagem(ns) nova(s) no robô; "
           f"{len(autorizados)} chat(s) autorizado(s).")
     novas = 0
-    linhas_existentes = set()
-    if OFERTAS_MANUAIS.exists():
-        linhas_existentes = {l.get("link", "").strip() for l in csv.DictReader(open(OFERTAS_MANUAIS, encoding="utf-8"))}
+    linhas_existentes = _fila_aberta()     # 18/11: só o que ainda não saiu (antes contava até o que já foi)
     for up in r.json().get("result", []):
         historico["_tg_offset"] = up["update_id"] + 1
         msg = up.get("message") or {}
@@ -1351,16 +1503,10 @@ def ler_caixa_do_bot(historico: dict) -> int:
         if not oferta:
             _responder(chat, f"⚠️ Não entendi essa oferta: {problema}.\n\n{AJUDA}")
             continue
-        if oferta["link"] in linhas_existentes:
+        oferta["quando"] = ""
+        if not _por_na_fila(oferta, linhas_existentes):
             _responder(chat, "ℹ️ Essa oferta já estava na fila.")
             continue
-        novo = not OFERTAS_MANUAIS.exists() or OFERTAS_MANUAIS.stat().st_size == 0
-        with open(OFERTAS_MANUAIS, "a", encoding="utf-8", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(oferta.keys()))
-            if novo:
-                w.writeheader()
-            w.writerow(oferta)
-        linhas_existentes.add(oferta["link"])
         novas += 1
         aviso = ""
         if oferta["loja"] == "Amazon" and not AMAZON_TAG and "tag=" not in oferta["link"]:
@@ -1407,61 +1553,76 @@ def postar_lista(escolhidas: list[dict], historico: dict, teste: bool = False) -
                 print(f"[aviso] não consegui avisar {chat} no Telegram: {e} (mande /start pro robô)")
         return
     for o in escolhidas:
-        foto_bytes = None
-        if not teste:
-            o["imagem"], foto_bytes = foto_boa(o)
-            if o.get("radar") and not foto_bytes:
-                print(f"[pulei] sem foto oficial (evita foto com marca de outro canal): {o['nome'][:60]}")
+        try:
+            foto_bytes = None
+            if not teste:
+                try:
+                    o["imagem"], foto_bytes = foto_boa(o)
+                except Exception as e:
+                    print(f"[aviso] busca de foto falhou: {e}")
+                    foto_bytes = None
+                if o.get("radar") and not foto_bytes:
+                    print(f"[pulei] sem foto oficial (evita foto com marca de outro canal): {o['nome'][:60]}")
+                    continue
+                if o.get("desconto", 0) >= 90:
+                    tirar_da_fila(o, f"desconto de {o['desconto']}% não é crível (confira o preço antigo)")
+                    continue
+            msg = montar_mensagem(o)
+            print("=" * 50 + "\n" + msg + "\n")
+            if teste:
                 continue
-            if o.get("desconto", 0) >= 90:
-                print(f"[pulei] desconto de {o['desconto']}% não é crível: {o['nome'][:60]}")
-                continue
-        msg = montar_mensagem(o)
-        print("=" * 50 + "\n" + msg + "\n")
-        if teste:
-            continue
-        envio = o["imagem"]
-        if CARTAO:
-            try:
-                card = cartao.gerar(o, foto_bytes, PERFIL or "ingrid")
-                if card:
-                    envio = card
-            except Exception as e:
-                print(f"[aviso] não consegui montar o cartão: {e}")
-        for canal in CANAIS_TELEGRAM:
-            try:
-                telegram(canal, msg, envio)
-            except Exception as e:
-                print(f"[aviso] não consegui postar no canal {canal}: {e}")
-        postou_zap = 0
-        if whatsapp_ligado():
-            try:
-                postou_zap = whatsapp(msg, envio)
-            except Exception as e:
-                print(f"[aviso] WhatsApp automático falhou: {e}")
-        parcial = (f" (em {postou_zap} de {len(GRUPOS_WHATSAPP)} grupos)"
-                   if 0 < postou_zap < len(GRUPOS_WHATSAPP) else "")
-        aviso_copia = (f"✅ Já postado no WhatsApp automaticamente{parcial}.\n\n" if postou_zap else
-                       ("⚠️ Não consegui postar no WhatsApp sozinho. Copie e cole:\n\n"
-                        if whatsapp_ligado() else "📋 Copie e cole no WhatsApp:\n\n"))
-        for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
-            try:
-                telegram(chat, aviso_copia + msg, None)
-            except Exception as e:
-                print(f"[aviso] não consegui mandar a cópia para {chat}: {e}")
-        if whatsapp_ligado():
-            time.sleep(random.randint(20, 45))   # intervalo humano entre posts no WhatsApp
-        historico[o["id"]] = time.time()
-        historico[chave_nome(o["nome"])] = time.time()
-        if chave_tipo(o["nome"]):
-            historico[chave_tipo(o["nome"])] = time.time()
-        if o.get("gid"):
-            marcar_postados_no_garimpo([o["gid"]], historico)
-        registrar_vitrine(o)
-        salvar_historico(historico)   # salva na hora: se a rodada cair no meio, não repete o que já foi
-        if o.get("manual"):
-            marcar_manual_postada(o["link"])
-        time.sleep(3)
+            envio = o["imagem"]
+            if CARTAO:
+                try:
+                    card = cartao.gerar(o, foto_bytes, PERFIL or "ingrid")
+                    if card:
+                        envio = card
+                except Exception as e:
+                    print(f"[aviso] não consegui montar o cartão: {e}")
+            for canal in CANAIS_TELEGRAM:
+                try:
+                    telegram(canal, msg, envio)
+                except Exception as e:
+                    print(f"[aviso] não consegui postar no canal {canal}: {e}")
+            postou_zap = 0
+            if whatsapp_ligado():
+                try:
+                    postou_zap = whatsapp(msg, envio)
+                except Exception as e:
+                    print(f"[aviso] WhatsApp automático falhou: {e}")
+            parcial = (f" (em {postou_zap} de {len(GRUPOS_WHATSAPP)} grupos)"
+                       if 0 < postou_zap < len(GRUPOS_WHATSAPP) else "")
+            aviso_copia = (f"✅ Já postado no WhatsApp automaticamente{parcial}.\n\n" if postou_zap else
+                           ("⚠️ Não consegui postar no WhatsApp sozinho. Copie e cole:\n\n"
+                            if whatsapp_ligado() else "📋 Copie e cole no WhatsApp:\n\n"))
+            for chat in [c.strip() for c in TELEGRAM_MEU_CHAT.split(",") if c.strip()]:
+                try:
+                    telegram(chat, aviso_copia + msg, None)
+                except Exception as e:
+                    print(f"[aviso] não consegui mandar a cópia para {chat}: {e}")
+            if whatsapp_ligado():
+                time.sleep(random.randint(20, 45))   # intervalo humano entre posts no WhatsApp
+            historico[o["id"]] = time.time()
+            historico[chave_nome(o["nome"])] = time.time()
+            if chave_tipo(o["nome"]):
+                historico[chave_tipo(o["nome"])] = time.time()
+            if o.get("gid"):
+                marcar_postados_no_garimpo([o["gid"]], historico)
+            registrar_vitrine(o)
+            salvar_historico(historico)   # salva na hora: se a rodada cair no meio, não repete o que já foi
+            if o.get("manual"):
+                marcar_manual_postada(o["link"], o.get("fila_id", ""), o.get("quando", ""))
+            time.sleep(3)
+        except Exception as e:
+            # 10/11: erro num post não derruba a rodada. Se o mesmo programado der erro 2 vezes, sai da fila.
+            print(f"[aviso] erro ao postar {o.get('nome', '')[:50]}: {e}")
+            if o.get("manual") and not teste:
+                chave = "_falha-" + o["id"]
+                historico[chave] = int(historico.get(chave, 0)) + 1
+                if historico[chave] >= 2:
+                    tirar_da_fila(o, f"deu erro 2 vezes seguidas ({str(e)[:80]})")
+                    historico.pop(chave, None)
+                salvar_historico(historico)
 
     if not teste:
         salvar_historico(historico)
@@ -1484,9 +1645,20 @@ def main() -> None:
         except Exception as e:
             print(f"[aviso] não consegui ler as mensagens do bot: {e}")
         salvar_historico(historico)
-        link_form = ""
+        # 18/11: botão "Limpar programação" / "✕" do painel: só cancela, não posta nada
+        if os.getenv("OFERTA_CANCELAR", "").strip():
+            try:
+                cancelar_programados(os.getenv("OFERTA_CANCELAR", ""))
+            except Exception as e:
+                print(f"[aviso] não consegui limpar a programação: {e}")
+            try:
+                escrever_agenda()
+            except Exception as e:
+                print(f"[aviso] agenda do painel: {e}")
+            return
+        id_form = ""
         try:
-            link_form = oferta_do_formulario()
+            id_form = oferta_do_formulario()
         except Exception as e:
             print(f"[aviso] formulário do painel: {e}")
         try:
@@ -1500,10 +1672,14 @@ def main() -> None:
             if modo_form == "guardar":
                 print("[formulário] programado na fila; sai no horário escolhido. Nada postado agora.")
                 return
-            if not link_form:
+            if not id_form:
                 return            # o formulário não deu certo: não posta a fila junto
-            # "Postar só este agora": sai SÓ o produto do formulário; a fila espera o horário dela
-            so_este = [o for o in ler_manuais() if o["link"] == link_form]
+            # "Postar só este agora": sai SÓ esta programação; o resto da fila espera o horário dela
+            so_este = [o for o in ler_manuais() if o.get("fila_id") and o["fila_id"] == id_form]
+            if not so_este:       # fila antiga, sem código: cai no jeito de antes (link, sem horário)
+                link_form = os.getenv("OFERTA_LINK", "").strip()
+                so_este = [o for o in ler_manuais() if not o.get("quando") and
+                           (o["link"] == link_form or link_form in o["link"])][:1]
             if so_este:
                 postar_lista(so_este, historico, teste)
             return
@@ -1511,6 +1687,8 @@ def main() -> None:
     ofertas = [o for o in fila if ja_pode_sair(o)]
     if len(ofertas) < len(fila):
         print(f"[agenda] {len(fila) - len(ofertas)} aprovada(s) esperando o horário programado.")
+    if ofertas:
+        print(f"[agenda] {len(ofertas)} programado(s) já liberado(s) pra sair (vai o mais antigo primeiro).")
 
     if RADAR_MODO == "auto":
         try:
