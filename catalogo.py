@@ -33,7 +33,7 @@ SHOPEE_APP_ID = os.getenv("SHOPEE_APP_ID", "").strip()
 SHOPEE_SECRET = os.getenv("SHOPEE_SECRET", "").strip()
 
 # Filtros (dá pra trocar no catalogo.yml sem mexer aqui)
-VENDAS_MIN = int(os.getenv("CATALOGO_VENDAS_MIN", "5000"))       # só produto que já vendeu isso (18/11: 5 mil)
+VENDAS_MIN = int(os.getenv("CATALOGO_VENDAS_MIN", "1000"))       # só produto que já vendeu isso (o catalogo.yml manda)
 NOTA_MIN = float(os.getenv("CATALOGO_NOTA_MIN", "4.5"))          # estrelas
 POR_CATEGORIA = int(os.getenv("CATALOGO_POR_CATEGORIA", "40"))   # quantos ficam em cada categoria
 POR_BUSCA = int(os.getenv("CATALOGO_POR_BUSCA", "50"))           # quantos a Shopee devolve por palavra
@@ -52,9 +52,11 @@ for par in os.getenv("CATALOGO_COMISSAO_AMAZON", "").split(","):
 
 # O que o catálogo busca na Shopee, por categoria (mesmos nomes do painel)
 PALAVRAS = {
-    "Fitness": ["legging fitness", "conjunto fitness feminino", "top academia", "short academia feminino",
-                "macaquinho fitness", "bermuda ciclista", "top nadador", "calça legging cintura alta",
-                "garrafa squeeze academia", "meia de compressão"],
+    "Fitness": ["legging fitness", "calça legging fitness", "legging empina bumbum", "conjunto fitness feminino",
+                "conjunto academia feminino", "top academia", "top fitness", "short academia feminino",
+                "short fitness", "macaquinho fitness", "macacão fitness", "bermuda ciclista", "regata academia feminina",
+                "cropped academia", "tênis academia feminino", "meia de compressão", "garrafa squeeze academia",
+                "coqueteleira", "mini band elástico", "tapete yoga"],
     "Moda": ["vestido feminino", "vestido midi", "calça pantacourt", "calça wide leg", "cropped feminino",
              "blusa feminina", "saia midi", "conjunto feminino", "body feminino", "pijama feminino",
              "bolsa feminina", "bolsa transversal", "sandália feminina", "tênis feminino", "brinco feminino",
@@ -80,6 +82,34 @@ if os.getenv("CATALOGO_PALAVRAS", "").strip():
         if ":" in bloco:
             cat, lista = bloco.split(":", 1)
             PALAVRAS[cat.strip()] = [p.strip() for p in lista.split("|") if p.strip()]
+
+
+# --------------------------- Categoria pelo nome -----------------------------
+# 18/11: a Shopee devolve de tudo numa busca ("calça legging" trazia calça jeans e pantalona).
+# Por isso a categoria final vem do NOME do produto; a da palavra buscada só vale se o nome não disser nada.
+import re
+_REGRAS = [
+    ("Fitness", r"fitness|academia|treino|legging|leggin|esportiv|dry ?fit|yoga|pilates|corrida|crossfit|muscula|"
+                r"compress[aã]o|nadador|ciclista|squeeze|coqueteleira|halter|caneleira|mini ?band|\bgym\b|ciclismo"),
+    ("Bebê", r"beb[eê]|infantil|crian[cç]a|menin[oa]|maternidade|fralda|brinquedo|chupeta|mamadeira"),
+    ("Beleza", r"perfume|body splash|maquiag|batom|\bbase\b|s[ée]rum|skin ?care|hidratante|protetor solar|shampoo|"
+               r"condicionador|cabelo|capilar|escova secadora|chapinha|prancha|c[ií]lios|sombra|pincel|esmalte|\bcreme\b|facial"),
+    ("Eletrodomésticos", r"air ?fryer|fritadeira|liquidificador|mixer|processador|sanduicheira|chaleira|ventilador|"
+                         r"aspirador|cafeteira|panela el[eé]trica|batedeira|ferro de passar|forno el[eé]trico"),
+    ("Eletrônicos", r"\bfone|headphone|earbud|smartwatch|smart watch|rel[oó]gio inteligente|carregador|caixa de som|"
+                    r"power ?bank|cabo usb|ring light|mouse|teclado|suporte (de )?celular|headset|bluetooth"),
+    ("Casa", r"organizador|\bpotes?\b|garrafa|\bcopo|toalha|len[cç]ol|jogo de cama|cobre ?leito|edredom|tapete|cortina|"
+             r"lumin[aá]ria|difusor|tempero|cabide|caixa organizadora|\bmop\b|cozinha|utens[ií]lio|panela|travesseiro"),
+    ("Moda", r"cal[cç]a|vestido|blusa|cropped|saia|\bbody\b|pijama|bolsa|sand[aá]lia|t[eê]nis|brinco|colar|[oó]culos|"
+             r"carteira|suti[aã]|short|regata|conjunto|jaqueta|rel[oó]gio|chinelo|camiseta|camisa|macac"),
+]
+
+
+def categoria_pelo_nome(nome: str, padrao: str) -> str:
+    for cat, regra in _REGRAS:
+        if re.search(regra, nome or "", re.I):
+            return cat
+    return padrao
 
 
 # ------------------------------- Shopee --------------------------------------
@@ -151,7 +181,7 @@ def item_shopee(n: dict, cat: str) -> dict | None:
         "nota": round(float(n.get("ratingStar") or 0), 1),
         "imagem": n.get("imageUrl") or "",
         "link": link,
-        "categoria": cat,
+        "categoria": categoria_pelo_nome(str(n["productName"]), cat),
         "vendedor": n.get("shopName") or "",
     }
 
@@ -180,16 +210,21 @@ def buscar_shopee() -> list[dict]:
             print(f"[catalogo] Shopee {cat} / '{palavra}': {len(nos)} vieram, {bons} passaram no filtro "
                   f"(o mais vendido tinha {maior} vendas)")
             time.sleep(2)                       # respiro pra API (com 1s ela dava "System Error")
-    saida, vistos = [], set()
-    for cat, achados in por_cat.items():
-        lista = sorted(achados.values(), key=lambda i: -i["vendas"])
-        for it in lista:
-            if len([x for x in saida if x["categoria"] == cat]) >= POR_CATEGORIA:
-                break
-            if it["id"] in vistos:              # mesmo produto em duas categorias: fica na primeira
-                continue
-            vistos.add(it["id"])
-            saida.append(it)
+    # Junta tudo, mais vendidos primeiro, e corta em POR_CATEGORIA pela categoria FINAL (a do nome)
+    todos, vistos = [], set()
+    for achados in por_cat.values():
+        for it in achados.values():
+            if it["id"] not in vistos:
+                vistos.add(it["id"])
+                todos.append(it)
+    todos.sort(key=lambda i: -i["vendas"])
+    saida, conta = [], {}
+    for it in todos:
+        if conta.get(it["categoria"], 0) >= POR_CATEGORIA:
+            continue
+        conta[it["categoria"]] = conta.get(it["categoria"], 0) + 1
+        saida.append(it)
+    print(f"[catalogo] Shopee por categoria: {conta}")
     return saida
 
 

@@ -27,6 +27,8 @@ Rodar:  python bot.py            (posta de verdade)
   - Dá pra programar com DIA e hora (até a semana toda): horario "2026-11-20T19" ou "-d20261120-h19".
   - Botão de limpar programação: input "cancelar" = "tudo" ou os códigos separados por vírgula.
     O que é cancelado fica marcado como "cancelado" no ofertas.csv (não sai e não volta).
+  - Botão "🔄 Atualizar garimpo" do painel (OFERTA_GARIMPAR=sim): só busca produtos novos pro painel.
+    Não lê o Telegram, não mexe na fila e não posta nada.
   - Junto com a busca da Shopee de 06/11 (mais vendidos + maior comissão + destaques na BF).
     Quantas palavras por rodada: SHOPEE_MAIS_VENDIDOS e SHOPEE_COMISSAO no postar.yml.
 """
@@ -1637,6 +1639,15 @@ def postar_lista(escolhidas: list[dict], historico: dict, teste: bool = False) -
 def main() -> None:
     teste = "--teste" in sys.argv
     historico = carregar_historico()
+    # 18/11: botão "🔄 Atualizar garimpo" do painel: só garimpa, não posta nada
+    if not teste and os.getenv("OFERTA_GARIMPAR", "").strip().lower() in ("sim", "1", "true"):
+        try:
+            n = atualizar_painel(historico)
+            print(f"[painel] atualização pedida pelo painel: {n} achado(s) novo(s). Nada foi postado.")
+        except Exception as e:
+            print(f"[aviso] painel falhou: {e}")
+        salvar_historico(historico)
+        return
     if not teste:
         try:
             n = ler_caixa_do_bot(historico)
