@@ -1,6 +1,5 @@
 {
  "_bot_user": "achadinhosbf_indy_bot",
- "radar-B0DMLHXKT3": 1792692269.5534832,
  "_aprovados": [
   "e774e3",
   "1d6331",
@@ -309,12 +308,7 @@
   "6f25db",
   "ac8986"
  ],
- "radar-B0GYFYZHH4": 1792692302.597988,
  "_tg_offset": 808290700,
- "manual-30ef9541e3": 1792757604.2085016,
- "radar-B0H6QVYHJJ": 1792793401.856743,
- "radar-B0HFB7X39Y": 1792800558.5694928,
- "radar-B07BK5WHD3": 1792854519.8826458,
  "manual-175456a17e": 1792873779.8975194,
  "nome-lojaoficial3vsnomercadolivre": 1792873779.897524,
  "manual-7a2e184bcb": 1792873826.146168,
@@ -1274,5 +1268,11 @@
  "nome-organizadorgirat\u00f3riomultiusobandeja": 1795030165.154902,
  "manual-63b2e52e06": 1795032083.2297351,
  "nome-passadeira110vferroavaporvaporizadordero": 1795032083.2297409,
- "tipo-passadeira": 1795032083.2299967
+ "tipo-passadeira": 1795032083.2299967,
+ "radar-B0DMLHXKT3": 1792692269.5534832,
+ "radar-B0GYFYZHH4": 1792692302.597988,
+ "manual-30ef9541e3": 1792757604.2085016,
+ "radar-B0H6QVYHJJ": 1792793401.856743,
+ "radar-B0HFB7X39Y": 1792800558.5694928,
+ "radar-B07BK5WHD3": 1792854519.8826458
 }
